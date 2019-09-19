@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2018 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2019 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/image/compression.hpp>
 
@@ -8,15 +8,13 @@ namespace
 {
     using namespace mango;
 
-    /******************************************************************************
-     @File         PVRTDecompress.cpp
-     @Title        PVRTDecompress
-     @Version
-     @Copyright    Copyright (c) Imagination Technologies Limited.
-     @Platform     ANSI compatible
-     @Description  PVRTC Texture Decompression.
-     ******************************************************************************/
+	// ----------------------------------------------------------------------------
+    // pvrtc
+    // ----------------------------------------------------------------------------
 
+    //
+    // Copyright (c) Imagination Technologies Limited.
+    //
     // PVRTC decompressor (C) Imagination Technologies Limited.
     // Adapted and optimized for MANGO in December 2016.
 
@@ -444,14 +442,38 @@ namespace
         }
     }
 
+	// ----------------------------------------------------------------------------
+    // pvrtc2
+    // ----------------------------------------------------------------------------
+
+    // http://sv-journal.org/2014-1/06/en/index.php?lang=en#7-3
+
     constexpr u32 pvrtc2_extend(u32 value, int from, int to)
     {
         return value * ((1 << to) - 1) / ((1 << from) - 1);
     }
 
-    constexpr int pvrtc2_lerp(int a, int b, int mod)
+    constexpr u32 pvrtc2_alpha0(u32 alpha)
     {
-        return a + ((b - a) * mod) / 3;
+        alpha = (alpha << 1) | 0;
+        return (alpha << 4) | alpha;
+    }
+
+    constexpr u32 pvrtc2_alpha1(u32 alpha)
+    {
+        alpha = (alpha << 1) | 1;
+        return (alpha << 4) | alpha;
+    }
+
+    static inline
+    ColorRGBA pvrtc2_lerp(ColorRGBA a, ColorRGBA b, int mod)
+    {
+        ColorRGBA c;
+        c.r = a.r + ((b.r - a.r) * mod) / 3;
+        c.g = a.g + ((b.g - a.g) * mod) / 3;
+        c.b = a.b + ((b.b - a.b) * mod) / 3;
+        c.a = a.a + ((b.a - a.a) * mod) / 3;
+        return c;
     }
 
     struct BlockPVRTC2
@@ -459,59 +481,51 @@ namespace
         ColorRGBA a;
         ColorRGBA b;
 
-        // mode: 0 -> bilinear
-        // mode: 1 -> punch-through alpha
-        // mode: 2 -> non-interpolated
-        // mode: 3 -> local palette
+        // --------------------------------------------
+        // hard   mode    decoder
+        // --------------------------------------------
+        //   0      0     bilinear
+        //   0      1     punch-through alpha
+        //   1      0     non-interpolated
+        //   1      1     local palette
+
         u32 mode;
+        u32 hard;
         u32 modulation;
 
-        void parse(const u8* data)
+        BlockPVRTC2(const u8* data)
         {
             modulation = uload32le(data + 0);
-
             u32 packed = uload32le(data + 4);
-            mode = ((packed & 0x8000) >> 14) | (packed & 1);
 
-            u32 c1 = (packed >> 1) & 0x3fff;
-            u32 c0 = (packed >> 16) & 0x7fff;
+            mode = packed & 0x0001;
+            hard = packed & 0x8000;
+
             u32 opacity = packed & 0x80000000;
 
             if (opacity)
             {
-                u32 b0 = pvrtc2_extend((c0 >> 0) & 0x1f, 5, 8);
-                u32 g0 = pvrtc2_extend((c0 >> 5) & 0x1f, 5, 8);
-                u32 r0 = pvrtc2_extend((c0 >> 10) & 0x1f, 5, 8);
-                u32 a0 = 0xff;
-                a = ColorRGBA(r0, g0, b0, a0);
+                a.b = pvrtc2_extend((packed >> 16) & 0x1f, 5, 8);
+                a.g = pvrtc2_extend((packed >> 21) & 0x1f, 5, 8);
+                a.r = pvrtc2_extend((packed >> 26) & 0x1f, 5, 8);
+                a.a = 0xff;
 
-                u32 b1 = pvrtc2_extend((c1 >> 0) & 0x0f, 4, 8);
-                u32 g1 = pvrtc2_extend((c1 >> 4) & 0x1f, 5, 8);
-                u32 r1 = pvrtc2_extend((c1 >> 9) & 0x1f, 5, 8);
-                u32 a1 = 0xff;
-                b = ColorRGBA(r1, g1, b1, a1);
+                b.b = pvrtc2_extend((packed >>  1) & 0x0f, 4, 8);
+                b.g = pvrtc2_extend((packed >>  5) & 0x1f, 5, 8);
+                b.r = pvrtc2_extend((packed >> 10) & 0x1f, 5, 8);
+                b.a = 0xff;
             }
             else
             {
-                u32 b0 = pvrtc2_extend((c0 >> 0) & 0xf, 4, 8);
-                u32 g0 = pvrtc2_extend((c0 >> 4) & 0xf, 4, 8);
-                u32 r0 = pvrtc2_extend((c0 >> 8) & 0xf, 4, 8);
-                u32 a0 = pvrtc2_extend((c0 >> 12) & 0x7, 3, 8);
-                a = ColorRGBA(r0, g0, b0, a0);
+                a.b = pvrtc2_extend((packed >> 16) & 0xf, 4, 8);
+                a.g = pvrtc2_extend((packed >> 20) & 0xf, 4, 8);
+                a.r = pvrtc2_extend((packed >> 24) & 0xf, 4, 8);
+                a.a = pvrtc2_alpha0((packed >> 28) & 0x7);
 
-                u32 b1 = pvrtc2_extend((c1 >> 0) & 0x07, 3, 8);
-                u32 g1 = pvrtc2_extend((c1 >> 3) & 0x0f, 4, 8);
-                u32 r1 = pvrtc2_extend((c1 >> 7) & 0x0f, 4, 8);
-                u32 a1 = pvrtc2_extend((c1 >> 11) & 0x07, 3, 8);
-                b = ColorRGBA(r1, g1, b1, a1);
-            }
-
-            switch (mode)
-            {
-                case 0: a = b = ColorRGBA(0, 255, 0, 255); break; // GREEN: bilinear
-                case 1: a = b = ColorRGBA(0, 0, 255, 255); break; // BLUE: punch-through alpha
-                //case 2: a = b = ColorRGBA(255, 255, 255, 255); break; // WHITE: non-interpolated
-                case 3: a = b = ColorRGBA(255, 255, 0, 255); break; // YELLOW: local palette
+                b.b = pvrtc2_extend((packed >>  1) & 0x07, 3, 8);
+                b.g = pvrtc2_extend((packed >>  4) & 0x0f, 4, 8);
+                b.r = pvrtc2_extend((packed >>  8) & 0x0f, 4, 8);
+                b.a = pvrtc2_alpha1((packed >> 12) & 0x07);
             }
         }
     };
@@ -528,36 +542,144 @@ namespace
         const u32 xblocks = ceil_div(width, block_width);
         const u32 yblocks = ceil_div(height, block_height);
 
-        for (int y = 0; y < yblocks; ++y)
+        // TODO: handle edge blocks (see yblocks - 1, xblocks - 1)
+        image += stride * 2 + 2 * 4;
+
+        for (int y0 = 0; y0 < yblocks - 1; ++y0)
         {
-            for (int x = 0; x < xblocks; ++x)
+            for (int x0 = 0; x0 < xblocks - 1; ++x0)
             {
-                BlockPVRTC2 block;
-                block.parse(data);
-                data += 8;
+                int x1 = (x0 + 1) % xblocks;
+                int y1 = (y0 + 1) % yblocks;
+                const u8* p0 = data + (y0 * xblocks + x0) * 8;
+                const u8* p1 = data + (y0 * xblocks + x1) * 8;
+                const u8* p2 = data + (y1 * xblocks + x0) * 8;
+                const u8* p3 = data + (y1 * xblocks + x1) * 8;
 
-                u32 modulation = block.modulation;
-                u8* block_image = image + x * block_width * 4;
+                BlockPVRTC2 block0(p0); // P block
+                BlockPVRTC2 block1(p1); // Q block
+                BlockPVRTC2 block2(p2); // R block
+                BlockPVRTC2 block3(p3); // S block
 
-                for (int j = 0; j < block_height; ++j)
+                ColorRGBA acolor[4];
+
+                acolor[0] = block0.a;
+                acolor[1] = block1.a;
+                acolor[2] = block2.a;
+                acolor[3] = block3.a;
+
+                ColorRGBA bcolor[4];
+
+                bcolor[0] = block0.b;
+                bcolor[1] = block1.b;
+                bcolor[2] = block2.b;
+                bcolor[3] = block3.b;
+
+                u32 modulation = block0.modulation;
+
+                for (int y = 0; y < block_height; ++y)
                 {
-                    u32* scan = reinterpret_cast<u32*>(block_image + j * stride);
-                    for (int i = 0; i < block_width; ++i)
+                    u32* scan = reinterpret_cast<u32*>(image + (y0 * block_height + y) * stride + (x0 * block_width * 4));
+
+                    for (int x = 0; x < block_width; ++x)
                     {
                         int mod = modulation & 3;
                         modulation >>= 2;
 
-                        ColorRGBA c;
-                        c. r = pvrtc2_lerp(block.b.r, block.a.r, mod);
-                        c. g = pvrtc2_lerp(block.b.g, block.a.g, mod);
-                        c. b = pvrtc2_lerp(block.b.b, block.a.b, mod);
-                        c. a = pvrtc2_lerp(block.b.a, block.a.a, mod);
-                        scan[i] = c;
+                        int offset = (y & 2) + (x >> 1);
+                        //offset = 0;
+                        ColorRGBA a = acolor[offset];
+                        ColorRGBA b = bcolor[offset];
+                        ColorRGBA c = pvrtc2_lerp(b, a, mod);
+                        scan[x] = c;
                     }
                 }
+
+                /*
+                u32 modulation = block0.modulation;
+                u8* block_image = image + x0 * block_width * 4;
+
+                ColorRGBA a = block0.a;
+                ColorRGBA b = block0.b;
+
+                for (int y = 0; y < block_height; ++y)
+                {
+                    u32* scan = reinterpret_cast<u32*>(block_image + y * stride);
+
+                    for (int x = 0; x < block_width; ++x)
+                    {
+                        int mod = modulation & 3;
+                        modulation >>= 2;
+#if 1
+                        if (block0.isBilinear())
+                        {
+                            const int m = 3;//bpp == 2 ? 7 : 3;
+                            const int s = m * 3;
+
+                            int w0 = (m - x) * (3 - y);
+                            int w1 = x * (3 - y);
+                            int w2 = (m - x) * y;
+                            int w3 = x * y;
+
+                            int r0 = (block0.a.r * w0 + block1.a.r * w1 + block2.a.r * w2 + block3.a.r * w3) / s;
+                            int g0 = (block0.a.g * w0 + block1.a.g * w1 + block2.a.g * w2 + block3.a.g * w3) / s;
+                            int b0 = (block0.a.b * w0 + block1.a.b * w1 + block2.a.b * w2 + block3.a.b * w3) / s;
+                            int a0 = (block0.a.a * w0 + block1.a.a * w1 + block2.a.a * w2 + block3.a.a * w3) / s;
+                            a.r = r0;
+                            a.g = g0;
+                            a.b = b0;
+                            a.a = a0;
+
+                            int r1 = (block0.b.r * w0 + block1.b.r * w1 + block2.b.r * w2 + block3.b.r * w3) / s;
+                            int g1 = (block0.b.g * w0 + block1.b.g * w1 + block2.b.g * w2 + block3.b.g * w3) / s;
+                            int b1 = (block0.b.b * w0 + block1.b.b * w1 + block2.b.b * w2 + block3.b.b * w3) / s;
+                            int a1 = (block0.b.a * w0 + block1.b.a * w1 + block2.b.a * w2 + block3.b.a * w3) / s;
+                            b.r = r1;
+                            b.g = g1;
+                            b.b = b1;
+                            b.a = a1;
+                        }
+#endif
+                        ColorRGBA c;
+                        c. r = pvrtc2_lerp(b.r, a.r, mod);
+                        c. g = pvrtc2_lerp(b.g, a.g, mod);
+                        c. b = pvrtc2_lerp(b.b, a.b, mod);
+                        c. a = pvrtc2_lerp(b.a, a.a, mod);
+
+                        if (mod == 2 && block0.isPunchthrough())
+                        {
+                            //c.a = 0;
+                        }
+
+#if 1
+                        switch (block0.mode)
+                        {
+                            case BlockPVRTC2::BILINEAR:
+                                // GREEN
+                                //c = ColorRGBA(0, 255, 0, 255);
+                                break;
+                            case BlockPVRTC2::PUNCHTHROUGH_ALPHA:
+                                // BLUE
+                                //c = ColorRGBA(0, 0, 255, 255);
+                                break;
+                            case BlockPVRTC2::NON_INTERPOLATED:
+                                // WHITE
+                                //c = ColorRGBA(255, 255, 255, 255);
+                                break;
+                            case BlockPVRTC2::LOCAL_PALETTE:
+                                // YELLOW
+                                c = ColorRGBA(255, 255, 0, 255);
+                                break;
+                        }
+#endif
+
+                        scan[x] = c;
+                    }
+                }
+                */
             }
 
-            image += stride * block_height;
+            //image += stride * block_height;
         }
     }
 
@@ -594,7 +716,7 @@ namespace mango
 
             default:
                 // incorrect compression
-                return;
+                break;
         }
     }
 
