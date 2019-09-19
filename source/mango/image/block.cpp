@@ -306,7 +306,7 @@ namespace
             0,
             opengl::COMPRESSED_RGBA_PVRTC_2BPPV2_IMG,
             vulkan::FORMAT_PVRTC2_2BPP_UNORM_BLOCK_IMG,
-            8, 4, 8, FORMAT_NONE, nullptr, nullptr
+            8, 4, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
         ),
 
         TextureCompressionInfo(
@@ -314,7 +314,7 @@ namespace
             0,
             opengl::COMPRESSED_RGBA_PVRTC_4BPPV2_IMG,
             vulkan::FORMAT_PVRTC2_4BPP_UNORM_BLOCK_IMG,
-            4, 4, 8, FORMAT_NONE, nullptr, nullptr
+            4, 4, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
         ),
 
         // EXT_pvrtc_sRGB

@@ -304,7 +304,7 @@ namespace
     {
         const u32 ui32WordWidth = (ui8Bpp == 2) ? 8 : 4;
         const u32 ui32WordHeight = 4;
-        
+
         xoffset = xoffset * ui32WordWidth - ui32WordWidth / 2;
         yoffset = yoffset * ui32WordHeight - ui32WordHeight / 2;
         const int xmask = width - 1;
@@ -358,7 +358,7 @@ namespace
         }
     }
 
-    static void pvrtcDecompress(const u8* pCompressedData,
+    static void pvrtc_decompress(const u8* pCompressedData,
                                u8* pDecompressedData,
                                int stride,
                                u32 ui32Width,
@@ -444,6 +444,123 @@ namespace
         }
     }
 
+    constexpr u32 pvrtc2_extend(u32 value, int from, int to)
+    {
+        return value * ((1 << to) - 1) / ((1 << from) - 1);
+    }
+
+    constexpr int pvrtc2_lerp(int a, int b, int mod)
+    {
+        return a + ((b - a) * mod) / 3;
+    }
+
+    struct BlockPVRTC2
+    {
+        ColorRGBA a;
+        ColorRGBA b;
+
+        // mode: 0 -> bilinear
+        // mode: 1 -> punch-through alpha
+        // mode: 2 -> non-interpolated
+        // mode: 3 -> local palette
+        u32 mode;
+        u32 modulation;
+
+        void parse(const u8* data)
+        {
+            modulation = uload32le(data + 0);
+
+            u32 packed = uload32le(data + 4);
+            mode = ((packed & 0x8000) >> 14) | (packed & 1);
+
+            u32 c1 = (packed >> 1) & 0x3fff;
+            u32 c0 = (packed >> 16) & 0x7fff;
+            u32 opacity = packed & 0x80000000;
+
+            if (opacity)
+            {
+                u32 b0 = pvrtc2_extend((c0 >> 0) & 0x1f, 5, 8);
+                u32 g0 = pvrtc2_extend((c0 >> 5) & 0x1f, 5, 8);
+                u32 r0 = pvrtc2_extend((c0 >> 10) & 0x1f, 5, 8);
+                u32 a0 = 0xff;
+                a = ColorRGBA(r0, g0, b0, a0);
+
+                u32 b1 = pvrtc2_extend((c1 >> 0) & 0x0f, 4, 8);
+                u32 g1 = pvrtc2_extend((c1 >> 4) & 0x1f, 5, 8);
+                u32 r1 = pvrtc2_extend((c1 >> 9) & 0x1f, 5, 8);
+                u32 a1 = 0xff;
+                b = ColorRGBA(r1, g1, b1, a1);
+            }
+            else
+            {
+                u32 b0 = pvrtc2_extend((c0 >> 0) & 0xf, 4, 8);
+                u32 g0 = pvrtc2_extend((c0 >> 4) & 0xf, 4, 8);
+                u32 r0 = pvrtc2_extend((c0 >> 8) & 0xf, 4, 8);
+                u32 a0 = pvrtc2_extend((c0 >> 12) & 0x7, 3, 8);
+                a = ColorRGBA(r0, g0, b0, a0);
+
+                u32 b1 = pvrtc2_extend((c1 >> 0) & 0x07, 3, 8);
+                u32 g1 = pvrtc2_extend((c1 >> 3) & 0x0f, 4, 8);
+                u32 r1 = pvrtc2_extend((c1 >> 7) & 0x0f, 4, 8);
+                u32 a1 = pvrtc2_extend((c1 >> 11) & 0x07, 3, 8);
+                b = ColorRGBA(r1, g1, b1, a1);
+            }
+
+            switch (mode)
+            {
+                case 0: a = b = ColorRGBA(0, 255, 0, 255); break; // GREEN: bilinear
+                case 1: a = b = ColorRGBA(0, 0, 255, 255); break; // BLUE: punch-through alpha
+                //case 2: a = b = ColorRGBA(255, 255, 255, 255); break; // WHITE: non-interpolated
+                case 3: a = b = ColorRGBA(255, 255, 0, 255); break; // YELLOW: local palette
+            }
+        }
+    };
+
+    static void pvrtc2_decompress(const u8* data,
+                                u8* image,
+                                int stride,
+                                u32 width,
+                                u32 height,
+                                u8 bpp)
+    {
+        const u32 block_width = bpp == 2 ? 8 : 4;
+        const u32 block_height = 4;
+        const u32 xblocks = ceil_div(width, block_width);
+        const u32 yblocks = ceil_div(height, block_height);
+
+        for (int y = 0; y < yblocks; ++y)
+        {
+            for (int x = 0; x < xblocks; ++x)
+            {
+                BlockPVRTC2 block;
+                block.parse(data);
+                data += 8;
+
+                u32 modulation = block.modulation;
+                u8* block_image = image + x * block_width * 4;
+
+                for (int j = 0; j < block_height; ++j)
+                {
+                    u32* scan = reinterpret_cast<u32*>(block_image + j * stride);
+                    for (int i = 0; i < block_width; ++i)
+                    {
+                        int mod = modulation & 3;
+                        modulation >>= 2;
+
+                        ColorRGBA c;
+                        c. r = pvrtc2_lerp(block.b.r, block.a.r, mod);
+                        c. g = pvrtc2_lerp(block.b.g, block.a.g, mod);
+                        c. b = pvrtc2_lerp(block.b.b, block.a.b, mod);
+                        c. a = pvrtc2_lerp(block.b.a, block.a.a, mod);
+                        scan[i] = c;
+                    }
+                }
+            }
+
+            image += stride * block_height;
+        }
+    }
+
 } // namespace
 
 namespace mango
@@ -451,46 +568,34 @@ namespace mango
 
     void decode_block_pvrtc(const TextureCompressionInfo& info, u8* out, const u8* in, int stride)
     {
-        u8 bpp = 0;
-
         switch (info.compression)
         {
             case TextureCompression::PVRTC_RGB_2BPP:
             case TextureCompression::PVRTC_RGBA_2BPP:
             case TextureCompression::PVRTC_SRGB_2BPP:
             case TextureCompression::PVRTC_SRGB_ALPHA_2BPP:
-                bpp = 2;
+                pvrtc_decompress(in, out, stride, info.width, info.height, 2);
                 break;
 
             case TextureCompression::PVRTC_RGB_4BPP:
             case TextureCompression::PVRTC_RGBA_4BPP:
             case TextureCompression::PVRTC_SRGB_4BPP:
             case TextureCompression::PVRTC_SRGB_ALPHA_4BPP:
-                bpp = 4;
+                pvrtc_decompress(in, out, stride, info.width, info.height, 4);
+                break;
+
+            case TextureCompression::PVRTC2_RGBA_2BPP:
+                pvrtc2_decompress(in, out, stride, info.width, info.height, 2);
+                break;
+
+            case TextureCompression::PVRTC2_RGBA_4BPP:
+                pvrtc2_decompress(in, out, stride, info.width, info.height, 4);
                 break;
 
             default:
                 // incorrect compression
                 return;
         }
-
-#if 0
-        if (info.width < 8 || info.heigbt < 8)
-        {
-            return;
-        }
-
-        if (info.width != info.height)
-        {
-            return;
-        }
-
-        if (!u32_is_power_of_two(info.width))
-        {
-            return;
-        }
-#endif
-        pvrtcDecompress(in, out, stride, info.width, info.height, bpp);
     }
 
 } // namespace mango
