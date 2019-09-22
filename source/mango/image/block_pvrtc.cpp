@@ -505,15 +505,26 @@ namespace
         ColorRGBA c;
         switch (mod)
         {
-            case 0: c = a; break;
+            case 0:
+                c = a;
+                break;
             case 1:
                 c.r = (a.r + b.r) / 2;
                 c.g = (a.g + b.g) / 2;
                 c.b = (a.b + b.b) / 2;
                 c.a = (a.a + b.a) / 2;
                 break;
-            case 2: c = ColorRGBA(0, 0, 0, 0); break; // punch-through (TODO: should this be a, b, or 0?)
-            case 3: c = b; break;
+            case 2:
+                // punch-through (TODO: should this be a, b, or 0?)
+                //c = ColorRGBA(0, 0, 0, 0);
+                c.r = (a.r + b.r) / 2;
+                c.g = (a.g + b.g) / 2;
+                c.b = (a.b + b.b) / 2;
+                c.a = 0;
+                break;
+            case 3:
+                c = b;
+                break;
         }
         return c;
     }
@@ -728,6 +739,7 @@ namespace
                         pvrtc2_quad_debug(scan2, stride, color);
                         pvrtc2_quad_debug(scan3, stride, color);
 #else
+                        // status: OK
                         pvrtc2_quad_bilinear(scan0, stride, 0, 0, block0, block1, block2, block3, block0.modulation >> 20);
                         pvrtc2_quad_bilinear(scan1, stride, 2, 0, block0, block1, block2, block3, block1.modulation >> 16);
                         pvrtc2_quad_bilinear(scan2, stride, 0, 2, block0, block1, block2, block3, block2.modulation >> 4);
@@ -743,6 +755,7 @@ namespace
                         pvrtc2_quad_debug(scan2, stride, color);
                         pvrtc2_quad_debug(scan3, stride, color);
 #else
+                        // status: ?
                         pvrtc2_quad_punchthrough(scan0, stride, 0, 0, block0, block1, block2, block3, block0.modulation >> 20);
                         pvrtc2_quad_punchthrough(scan1, stride, 2, 0, block0, block1, block2, block3, block1.modulation >> 16);
                         pvrtc2_quad_punchthrough(scan2, stride, 0, 2, block0, block1, block2, block3, block2.modulation >> 4);
@@ -761,7 +774,7 @@ namespace
                         pvrtc2_quad_debug(scan2, stride, color);
                         pvrtc2_quad_debug(scan3, stride, color);
 #else
-                        // TODO: broken color
+                        // status: ?
                         pvrtc2_quad_nearest(scan0, stride, block0.a, block0.b, block0.modulation >> 20);
                         pvrtc2_quad_nearest(scan1, stride, block1.a, block1.b, block1.modulation >> 16);
                         pvrtc2_quad_nearest(scan2, stride, block2.a, block2.b, block2.modulation >> 4);
@@ -777,18 +790,6 @@ namespace
                         pvrtc2_quad_debug(scan2, stride, color);
                         pvrtc2_quad_debug(scan3, stride, color);
 #else
-                        // TODO: broken pixels (random glitches)
-
-                        // PQ 01
-                        // RS 23
-
-                        // P*   P,Q         P,Q           P,Q
-                        // P,R  P,Qa,Rb     P,Q           Q,Sa,Pb
-                        //
-                        // P,R  P,R         Pa,Qb,Ra,Sb   Q,S
-                        // P,R  R,Pa,Sb     R,S           S,Ra,Qb
-
-                        // TODO: local palette
                         ColorRGBA palette[64];
 
                         // P
@@ -858,8 +859,6 @@ namespace
                         palette[47] = block2.b;
 
                         // S
-                        // PQ 01
-                        // RS 23
 
                         palette[48] = block0.a;
                         palette[49] = block3.b;
@@ -887,6 +886,7 @@ namespace
                             //std::swap(palette[i + 2], palette[i + 3]);
                         }
 
+                        // status: ?
                         pvrtc2_quad_palette(scan0, stride, palette + 0 * 16, block0.modulation >> 20);
                         pvrtc2_quad_palette(scan1, stride, palette + 1 * 16, block1.modulation >> 16);
                         pvrtc2_quad_palette(scan2, stride, palette + 2 * 16, block2.modulation >> 4);
