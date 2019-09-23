@@ -516,11 +516,11 @@ namespace
                 break;
             case 2:
                 // punch-through (TODO: should this be a, b, or 0?)
-                //c = ColorRGBA(0, 0, 0, 0);
-                c.r = (a.r + b.r) / 2;
-                c.g = (a.g + b.g) / 2;
-                c.b = (a.b + b.b) / 2;
-                c.a = 0;
+                c = ColorRGBA(0, 0, 0, 0);
+                //c.r = (a.r + b.r) / 2;
+                //c.g = (a.g + b.g) / 2;
+                //c.b = (a.b + b.b) / 2;
+                //c.a = 0;
                 break;
             case 3:
                 c = b;
@@ -573,12 +573,14 @@ namespace
                 a.b = pvrtc2_extend((packed >>  1) & 0x07, 3, 8);
                 a.g = pvrtc2_extend((packed >>  4) & 0x0f, 4, 8);
                 a.r = pvrtc2_extend((packed >>  8) & 0x0f, 4, 8);
-                a.a = pvrtc2_alpha1((packed >> 12) & 0x07);
+                //a.a = pvrtc2_alpha1((packed >> 12) & 0x07);
+                a.a = pvrtc2_extend((packed >> 12) & 0x07, 3, 8);
 
                 b.b = pvrtc2_extend((packed >> 16) & 0xf, 4, 8);
                 b.g = pvrtc2_extend((packed >> 20) & 0xf, 4, 8);
                 b.r = pvrtc2_extend((packed >> 24) & 0xf, 4, 8);
-                b.a = pvrtc2_alpha0((packed >> 28) & 0x7);
+                //b.a = pvrtc2_alpha0((packed >> 28) & 0x7);
+                b.a = pvrtc2_extend((packed >> 28) & 0x7, 3, 8);
             }
         }
     };
@@ -627,22 +629,25 @@ namespace
         {
             for (int x = 0; x < 2; ++x)
             {
+                constexpr int N = 16;
+                constexpr int S = 4;
+
                 int u = u0 + x;
                 int v = v0 + y;
-                int w0 = (3 - u) * (3 - v);
-                int w1 = u * (3 - v);
-                int w2 = (3 - u) * v;
+                int w0 = (S - u) * (S - v);
+                int w1 = u * (S - v);
+                int w2 = (S - u) * v;
                 int w3 = u * v;
 
-                a[y * 2 + x].r = (block0.a.r * w0 + block1.a.r * w1 + block2.a.r * w2 + block3.a.r * w3) / 9;
-                a[y * 2 + x].g = (block0.a.g * w0 + block1.a.g * w1 + block2.a.g * w2 + block3.a.g * w3) / 9;
-                a[y * 2 + x].b = (block0.a.b * w0 + block1.a.b * w1 + block2.a.b * w2 + block3.a.b * w3) / 9;
-                a[y * 2 + x].a = (block0.a.a * w0 + block1.a.a * w1 + block2.a.a * w2 + block3.a.a * w3) / 9;
+                a[y * 2 + x].r = (block0.a.r * w0 + block1.a.r * w1 + block2.a.r * w2 + block3.a.r * w3) / N;
+                a[y * 2 + x].g = (block0.a.g * w0 + block1.a.g * w1 + block2.a.g * w2 + block3.a.g * w3) / N;
+                a[y * 2 + x].b = (block0.a.b * w0 + block1.a.b * w1 + block2.a.b * w2 + block3.a.b * w3) / N;
+                a[y * 2 + x].a = (block0.a.a * w0 + block1.a.a * w1 + block2.a.a * w2 + block3.a.a * w3) / N;
 
-                b[y * 2 + x].r = (block0.b.r * w0 + block1.b.r * w1 + block2.b.r * w2 + block3.b.r * w3) / 9;
-                b[y * 2 + x].g = (block0.b.g * w0 + block1.b.g * w1 + block2.b.g * w2 + block3.b.g * w3) / 9;
-                b[y * 2 + x].b = (block0.b.b * w0 + block1.b.b * w1 + block2.b.b * w2 + block3.b.b * w3) / 9;
-                b[y * 2 + x].a = (block0.b.a * w0 + block1.b.a * w1 + block2.b.a * w2 + block3.b.a * w3) / 9;
+                b[y * 2 + x].r = (block0.b.r * w0 + block1.b.r * w1 + block2.b.r * w2 + block3.b.r * w3) / N;
+                b[y * 2 + x].g = (block0.b.g * w0 + block1.b.g * w1 + block2.b.g * w2 + block3.b.g * w3) / N;
+                b[y * 2 + x].b = (block0.b.b * w0 + block1.b.b * w1 + block2.b.b * w2 + block3.b.b * w3) / N;
+                b[y * 2 + x].a = (block0.b.a * w0 + block1.b.a * w1 + block2.b.a * w2 + block3.b.a * w3) / N;
             }
         }
 
@@ -668,22 +673,25 @@ namespace
         {
             for (int x = 0; x < 2; ++x)
             {
+                constexpr int N = 16;
+                constexpr int S = 4;
+
                 int u = u0 + x;
                 int v = v0 + y;
-                int w0 = (3 - u) * (3 - v);
-                int w1 = u * (3 - v);
-                int w2 = (3 - u) * v;
+                int w0 = (S - u) * (S - v);
+                int w1 = u * (S - v);
+                int w2 = (S - u) * v;
                 int w3 = u * v;
 
-                a[y * 2 + x].r = (block0.a.r * w0 + block1.a.r * w1 + block2.a.r * w2 + block3.a.r * w3) / 9;
-                a[y * 2 + x].g = (block0.a.g * w0 + block1.a.g * w1 + block2.a.g * w2 + block3.a.g * w3) / 9;
-                a[y * 2 + x].b = (block0.a.b * w0 + block1.a.b * w1 + block2.a.b * w2 + block3.a.b * w3) / 9;
-                a[y * 2 + x].a = (block0.a.a * w0 + block1.a.a * w1 + block2.a.a * w2 + block3.a.a * w3) / 9;
+                a[y * 2 + x].r = (block0.a.r * w0 + block1.a.r * w1 + block2.a.r * w2 + block3.a.r * w3) / N;
+                a[y * 2 + x].g = (block0.a.g * w0 + block1.a.g * w1 + block2.a.g * w2 + block3.a.g * w3) / N;
+                a[y * 2 + x].b = (block0.a.b * w0 + block1.a.b * w1 + block2.a.b * w2 + block3.a.b * w3) / N;
+                a[y * 2 + x].a = (block0.a.a * w0 + block1.a.a * w1 + block2.a.a * w2 + block3.a.a * w3) / N;
 
-                b[y * 2 + x].r = (block0.b.r * w0 + block1.b.r * w1 + block2.b.r * w2 + block3.b.r * w3) / 9;
-                b[y * 2 + x].g = (block0.b.g * w0 + block1.b.g * w1 + block2.b.g * w2 + block3.b.g * w3) / 9;
-                b[y * 2 + x].b = (block0.b.b * w0 + block1.b.b * w1 + block2.b.b * w2 + block3.b.b * w3) / 9;
-                b[y * 2 + x].a = (block0.b.a * w0 + block1.b.a * w1 + block2.b.a * w2 + block3.b.a * w3) / 9;
+                b[y * 2 + x].r = (block0.b.r * w0 + block1.b.r * w1 + block2.b.r * w2 + block3.b.r * w3) / N;
+                b[y * 2 + x].g = (block0.b.g * w0 + block1.b.g * w1 + block2.b.g * w2 + block3.b.g * w3) / N;
+                b[y * 2 + x].b = (block0.b.b * w0 + block1.b.b * w1 + block2.b.b * w2 + block3.b.b * w3) / N;
+                b[y * 2 + x].a = (block0.b.a * w0 + block1.b.a * w1 + block2.b.a * w2 + block3.b.a * w3) / N;
             }
         }
 
@@ -732,14 +740,14 @@ namespace
                 {
                     if (!block0.mode)
                     {
-#if 0
+#if 1
                         ColorRGBA color(0, 255, 0, 255);
                         pvrtc2_quad_debug(scan0, stride, color);
                         pvrtc2_quad_debug(scan1, stride, color);
                         pvrtc2_quad_debug(scan2, stride, color);
                         pvrtc2_quad_debug(scan3, stride, color);
 #else
-                        // status: OK
+                        // status: ?
                         pvrtc2_quad_bilinear(scan0, stride, 0, 0, block0, block1, block2, block3, block0.modulation >> 20);
                         pvrtc2_quad_bilinear(scan1, stride, 2, 0, block0, block1, block2, block3, block1.modulation >> 16);
                         pvrtc2_quad_bilinear(scan2, stride, 0, 2, block0, block1, block2, block3, block2.modulation >> 4);
@@ -748,7 +756,7 @@ namespace
                     }
                     else
                     {
-#if 0
+#if 1
                         ColorRGBA color(0, 0, 255, 255);
                         pvrtc2_quad_debug(scan0, stride, color);
                         pvrtc2_quad_debug(scan1, stride, color);
@@ -767,7 +775,7 @@ namespace
                 {
                     if (!block0.mode)
                     {
-#if 0
+#if 1
                         ColorRGBA color(255, 255, 255, 255);
                         pvrtc2_quad_debug(scan0, stride, color);
                         pvrtc2_quad_debug(scan1, stride, color);
