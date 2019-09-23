@@ -605,8 +605,105 @@ namespace
         scan1[1] = pvrtc2_lerp(a, b, (modulation >> 10) & 3);
     }
 
-    void pvrtc2_quad_palette(u8* image, int stride, const ColorRGBA* palette, u32 modulation)
+    void pvrtc2_quad_palette(u8* image, int stride, int x, int y, const BlockPVRTC2* blocks, u32 modulation)
     {
+        ColorRGBA palette[16];
+
+        int offset = y * 2 + x;
+#if 1
+        switch (offset)
+        {
+            case 0:
+                // P
+                palette[ 0] = blocks[0].a;
+                palette[ 1] = (blocks[0].a * 5 + blocks[0].b * 3) / 8;
+                palette[ 2] = (blocks[0].a * 3 + blocks[0].b * 5) / 8;
+                palette[ 3] = blocks[0].b;
+
+                palette[ 4] = blocks[0].a;
+                palette[ 5] = blocks[0].b;
+                palette[ 6] = blocks[1].a;
+                palette[ 7] = blocks[1].b;
+
+                palette[ 8] = blocks[0].a;
+                palette[ 9] = blocks[0].b;
+                palette[10] = blocks[2].a;
+                palette[11] = blocks[2].b;
+
+                palette[12] = blocks[0].a;
+                palette[13] = blocks[0].b;
+                palette[14] = blocks[1].a;
+                palette[15] = blocks[2].b;
+                break;
+            case 1:
+                // Q
+                palette[ 0] = blocks[0].a;
+                palette[ 1] = blocks[0].b;
+                palette[ 2] = blocks[1].a;
+                palette[ 3] = blocks[1].b;
+
+                palette[ 4] = blocks[0].a;
+                palette[ 5] = blocks[0].b;
+                palette[ 6] = blocks[1].a;
+                palette[ 7] = blocks[1].b;
+
+                palette[ 8] = blocks[0].a;
+                palette[ 9] = blocks[0].b;
+                palette[10] = blocks[1].a;
+                palette[11] = blocks[1].b;
+
+                palette[12] = blocks[3].a;
+                palette[13] = blocks[0].b;
+                palette[14] = blocks[1].a;
+                palette[15] = blocks[1].b;
+                break;
+            case 2:
+                // R
+                palette[ 0] = blocks[0].a;
+                palette[ 1] = blocks[0].b;
+                palette[ 2] = blocks[2].a;
+                palette[ 3] = blocks[2].b;
+
+                palette[ 4] = blocks[0].a;
+                palette[ 5] = blocks[0].b;
+                palette[ 6] = blocks[2].a;
+                palette[ 7] = blocks[2].b;
+
+                palette[ 8] = blocks[0].a;
+                palette[ 9] = blocks[0].b;
+                palette[10] = blocks[2].a;
+                palette[11] = blocks[2].b;
+
+                palette[12] = blocks[0].a;
+                palette[13] = blocks[3].b;
+                palette[14] = blocks[2].a;
+                palette[15] = blocks[2].b;
+                break;
+            case 3:
+                // S
+                palette[ 0] = blocks[0].a;
+                palette[ 1] = blocks[3].b;
+                palette[ 2] = blocks[2].a;
+                palette[ 3] = blocks[1].b;
+
+                palette[ 4] = blocks[3].a;
+                palette[ 5] = blocks[3].b;
+                palette[ 6] = blocks[1].a;
+                palette[ 7] = blocks[1].b;
+
+                palette[ 8] = blocks[3].a;
+                palette[ 9] = blocks[3].b;
+                palette[10] = blocks[2].a;
+                palette[11] = blocks[2].b;
+
+                palette[12] = blocks[3].a;
+                palette[13] = blocks[3].b;
+                palette[14] = blocks[2].a;
+                palette[15] = blocks[1].b;
+                break;
+        }
+#endif
+
         u32* scan0 = reinterpret_cast<u32*>(image + stride * 0);
         u32* scan1 = reinterpret_cast<u32*>(image + stride * 1);
         scan0[0] = palette[((modulation >>  0) & 3) + 0];
@@ -726,180 +823,62 @@ namespace
                 const u8* p2 = data + (y1 * xblocks + x0) * 8;
                 const u8* p3 = data + (y1 * xblocks + x1) * 8;
 
-                BlockPVRTC2 block0(p0); // P block
-                BlockPVRTC2 block1(p1); // Q block
-                BlockPVRTC2 block2(p2); // R block
-                BlockPVRTC2 block3(p3); // S block
-
-                u8* scan0 = image + ((y0 * block_height + 2) % height) * stride + ((x0 * block_width + 2) % width) * 4;
-                u8* scan1 = image + ((y0 * block_height + 2) % height) * stride + ((x0 * block_width + 4) % width) * 4;
-                u8* scan2 = image + ((y0 * block_height + 4) % height) * stride + ((x0 * block_width + 2) % width) * 4;
-                u8* scan3 = image + ((y0 * block_height + 4) % height) * stride + ((x0 * block_width + 4) % width) * 4;
-
-                if (!block0.hard)
+                const BlockPVRTC2 blocks[4] =
                 {
-                    if (!block0.mode)
-                    {
-#if 1
-                        ColorRGBA color(0, 255, 0, 255);
-                        pvrtc2_quad_debug(scan0, stride, color);
-                        pvrtc2_quad_debug(scan1, stride, color);
-                        pvrtc2_quad_debug(scan2, stride, color);
-                        pvrtc2_quad_debug(scan3, stride, color);
-#else
-                        // status: ?
-                        pvrtc2_quad_bilinear(scan0, stride, 0, 0, block0, block1, block2, block3, block0.modulation >> 20);
-                        pvrtc2_quad_bilinear(scan1, stride, 2, 0, block0, block1, block2, block3, block1.modulation >> 16);
-                        pvrtc2_quad_bilinear(scan2, stride, 0, 2, block0, block1, block2, block3, block2.modulation >> 4);
-                        pvrtc2_quad_bilinear(scan3, stride, 2, 2, block0, block1, block2, block3, block3.modulation >> 0);
-#endif
-                    }
-                    else
-                    {
-#if 1
-                        ColorRGBA color(0, 0, 255, 255);
-                        pvrtc2_quad_debug(scan0, stride, color);
-                        pvrtc2_quad_debug(scan1, stride, color);
-                        pvrtc2_quad_debug(scan2, stride, color);
-                        pvrtc2_quad_debug(scan3, stride, color);
-#else
-                        // status: ?
-                        pvrtc2_quad_punchthrough(scan0, stride, 0, 0, block0, block1, block2, block3, block0.modulation >> 20);
-                        pvrtc2_quad_punchthrough(scan1, stride, 2, 0, block0, block1, block2, block3, block1.modulation >> 16);
-                        pvrtc2_quad_punchthrough(scan2, stride, 0, 2, block0, block1, block2, block3, block2.modulation >> 4);
-                        pvrtc2_quad_punchthrough(scan3, stride, 2, 2, block0, block1, block2, block3, block3.modulation >> 0);
-#endif
-                    }
-                }
-                else
+                    BlockPVRTC2(p0),
+                    BlockPVRTC2(p1),
+                    BlockPVRTC2(p2),
+                    BlockPVRTC2(p3),
+                };
+
+                const int mods[] =
                 {
-                    if (!block0.mode)
+                    20, 16, 4, 0
+                };
+
+                for (int y = 0; y < 2; ++y)
+                {
+                    for (int x = 0; x < 2; ++x)
                     {
-#if 1
-                        ColorRGBA color(255, 255, 255, 255);
-                        pvrtc2_quad_debug(scan0, stride, color);
-                        pvrtc2_quad_debug(scan1, stride, color);
-                        pvrtc2_quad_debug(scan2, stride, color);
-                        pvrtc2_quad_debug(scan3, stride, color);
-#else
-                        // status: ?
-                        pvrtc2_quad_nearest(scan0, stride, block0.a, block0.b, block0.modulation >> 20);
-                        pvrtc2_quad_nearest(scan1, stride, block1.a, block1.b, block1.modulation >> 16);
-                        pvrtc2_quad_nearest(scan2, stride, block2.a, block2.b, block2.modulation >> 4);
-                        pvrtc2_quad_nearest(scan3, stride, block3.a, block3.b, block3.modulation >> 0);
-#endif
-                    }
-                    else
-                    {
-#if 0
-                        ColorRGBA color(255, 255, 0, 255);
-                        pvrtc2_quad_debug(scan0, stride, color);
-                        pvrtc2_quad_debug(scan1, stride, color);
-                        pvrtc2_quad_debug(scan2, stride, color);
-                        pvrtc2_quad_debug(scan3, stride, color);
-#else
-                        ColorRGBA palette[64];
+                        const BlockPVRTC2& block = blocks[y * 2 + x];
+                        u8* scan = image + ((y0 * block_height + (y + 1) * 2) % height) * stride + ((x0 * block_width + (x + 1) * 2) % width) * 4;
+                        u32 modulation = block.modulation >> mods[y * 2 + x];
 
-                        // P
+                        ColorRGBA color;
+                        bool debug = false;
 
-                        palette[ 0] = block0.a;
-                        palette[ 1] = (block0.a * 5 + block0.b * 3) / 8;
-                        palette[ 2] = (block0.a * 3 + block0.b * 5) / 8;
-                        palette[ 3] = block0.b;
-
-                        palette[ 4] = block0.a;
-                        palette[ 5] = block0.b;
-                        palette[ 6] = block1.a;
-                        palette[ 7] = block1.b;
-
-                        palette[ 8] = block0.a;
-                        palette[ 9] = block0.b;
-                        palette[10] = block2.a;
-                        palette[11] = block2.b;
-
-                        palette[12] = block0.a;
-                        palette[13] = block0.b;
-                        palette[14] = block1.a;
-                        palette[15] = block2.b;
-
-                        // Q
-
-                        palette[16] = block0.a;
-                        palette[17] = block0.b;
-                        palette[18] = block1.a;
-                        palette[19] = block1.b;
-
-                        palette[20] = block0.a;
-                        palette[21] = block0.b;
-                        palette[22] = block1.a;
-                        palette[23] = block1.b;
-
-                        palette[24] = block0.a;
-                        palette[25] = block0.b;
-                        palette[26] = block1.a;
-                        palette[27] = block1.b;
-
-                        palette[28] = block3.a;
-                        palette[29] = block0.b;
-                        palette[30] = block1.a;
-                        palette[31] = block1.b;
-
-                        // R
-
-                        palette[32] = block0.a;
-                        palette[33] = block0.b;
-                        palette[34] = block2.a;
-                        palette[35] = block2.b;
-
-                        palette[36] = block0.a;
-                        palette[37] = block0.b;
-                        palette[38] = block2.a;
-                        palette[39] = block2.b;
-
-                        palette[40] = block0.a;
-                        palette[41] = block0.b;
-                        palette[42] = block2.a;
-                        palette[43] = block2.b;
-
-                        palette[44] = block0.a;
-                        palette[45] = block3.b;
-                        palette[46] = block2.a;
-                        palette[47] = block2.b;
-
-                        // S
-
-                        palette[48] = block0.a;
-                        palette[49] = block3.b;
-                        palette[50] = block2.a;
-                        palette[51] = block1.b;
-
-                        palette[52] = block3.a;
-                        palette[53] = block3.b;
-                        palette[54] = block1.a;
-                        palette[55] = block1.b;
-
-                        palette[56] = block3.a;
-                        palette[57] = block3.b;
-                        palette[58] = block2.a;
-                        palette[59] = block2.b;
-
-                        palette[60] = block3.a;
-                        palette[61] = block3.b;
-                        palette[62] = block2.a;
-                        palette[63] = block1.b;
-
-                        for (int i = 4; i < 64; i += 4)
+                        int md = (!!blocks[0].hard) * 2 + !!block.mode;
+                        switch (md)
                         {
-                            //std::swap(palette[i + 0], palette[i + 1]);
-                            //std::swap(palette[i + 2], palette[i + 3]);
+                            case 0:
+                                color = ColorRGBA(0, 255, 0, 255);
+                                debug = false;
+                                pvrtc2_quad_bilinear(scan, stride, x * 2, y * 2, blocks[0], blocks[1], blocks[2], blocks[3], modulation);
+                                break;
+                            case 1:
+                                color = ColorRGBA(0, 0, 255, 255);
+                                debug = false;
+                                pvrtc2_quad_punchthrough(scan, stride, x * 2, y * 2, blocks[0], blocks[1], blocks[2], blocks[3], modulation);
+                                break;
+                            case 2:
+                                color = ColorRGBA(255, 0, 0, 255);
+                                debug = false;
+                                pvrtc2_quad_nearest(scan, stride, block.a, block.b, modulation);
+                                break;
+                            case 3:
+                                color = ColorRGBA(255, 255, 0, 255);
+                                debug = false;
+                                pvrtc2_quad_palette(scan, stride, x, y, blocks, modulation);
+                                break;
                         }
 
-                        // status: ?
-                        pvrtc2_quad_palette(scan0, stride, palette + 0 * 16, block0.modulation >> 20);
-                        pvrtc2_quad_palette(scan1, stride, palette + 1 * 16, block1.modulation >> 16);
-                        pvrtc2_quad_palette(scan2, stride, palette + 2 * 16, block2.modulation >> 4);
-                        pvrtc2_quad_palette(scan3, stride, palette + 3 * 16, block3.modulation >> 0);
-#endif
+                        if (debug)
+                        {
+                            pvrtc2_quad_debug(scan, stride, color);
+                            pvrtc2_quad_debug(scan, stride, color);
+                            pvrtc2_quad_debug(scan, stride, color);
+                            pvrtc2_quad_debug(scan, stride, color);
+                        }
                     }
                 }
             }
