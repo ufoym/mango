@@ -468,6 +468,11 @@ namespace detail {
         return detail::scalar_unroll(detail::scalar_unsigned_average, a, b);
     }
 
+    static inline u8x16 ravg(u8x16 a, u8x16 b)
+    {
+        return avg(a + 1, b);
+    }
+
     // bitwise
 
     static inline u8x16 bitwise_nand(u8x16 a, u8x16 b)
@@ -637,6 +642,11 @@ namespace detail {
         return detail::scalar_unroll(detail::scalar_unsigned_average, a, b);
     }
 
+    static inline u16x8 ravg(u16x8 a, u16x8 b)
+    {
+        return avg(a + 1, b);
+    }
+
     static inline u16x8 mullo(u16x8 a, u16x8 b)
     {
         return detail::scalar_unroll(detail::scalar_mullo, a, b);
@@ -706,6 +716,16 @@ namespace detail {
         return detail::scalar_select(mask, a, b);
     }
 
+    static inline u16x8 min(u16x8 a, u16x8 b)
+    {
+        return detail::scalar_unroll(detail::scalar_min, a, b);
+    }
+
+    static inline u16x8 max(u16x8 a, u16x8 b)
+    {
+        return detail::scalar_unroll(detail::scalar_max, a, b);
+    }
+
     // shift by constant
 
     template <int Count>
@@ -741,16 +761,6 @@ namespace detail {
     static inline u16x8 sra(u16x8 a, int count)
     {
         return detail::scalar_shift_right<u16x8, s16>(a, count);
-    }
-
-    static inline u16x8 min(u16x8 a, u16x8 b)
-    {
-        return detail::scalar_unroll(detail::scalar_min, a, b);
-    }
-
-    static inline u16x8 max(u16x8 a, u16x8 b)
-    {
-        return detail::scalar_unroll(detail::scalar_max, a, b);
     }
     
     // -----------------------------------------------------------------
@@ -864,6 +874,11 @@ namespace detail {
         return detail::scalar_unroll(detail::scalar_unsigned_average, a, b);
     }
 
+    static inline u32x4 ravg(u32x4 a, u32x4 b)
+    {
+        return avg(a + 1, b);
+    }
+
     static inline u32x4 mullo(u32x4 a, u32x4 b)
     {
         return detail::scalar_unroll(detail::scalar_mullo, a, b);
@@ -933,6 +948,16 @@ namespace detail {
         return detail::scalar_select(mask, a, b);
     }
 
+    static inline u32x4 min(u32x4 a, u32x4 b)
+    {
+        return detail::scalar_unroll(detail::scalar_min, a, b);
+    }
+
+    static inline u32x4 max(u32x4 a, u32x4 b)
+    {
+        return detail::scalar_unroll(detail::scalar_max, a, b);
+    }
+
     // shift by constant
 
     template <int Count>
@@ -985,16 +1010,6 @@ namespace detail {
     static inline u32x4 sra(u32x4 a, u32x4 count)
     {
         return detail::scalar_shift_right<u32x4, s32, u32x4>(a, count);
-    }
-
-    static inline u32x4 min(u32x4 a, u32x4 b)
-    {
-        return detail::scalar_unroll(detail::scalar_min, a, b);
-    }
-
-    static inline u32x4 max(u32x4 a, u32x4 b)
-    {
-        return detail::scalar_unroll(detail::scalar_max, a, b);
     }
 
     // -----------------------------------------------------------------
@@ -1067,6 +1082,11 @@ namespace detail {
         return detail::scalar_unroll(detail::scalar_unsigned_average, a, b);
     }
 
+    static inline u64x2 ravg(u64x2 a, u64x2 b)
+    {
+        return avg(a + 1, b);
+    }
+
     // bitwise
 
     static inline u64x2 bitwise_nand(u64x2 a, u64x2 b)
@@ -1129,6 +1149,16 @@ namespace detail {
     static inline u64x2 select(mask64x2 mask, u64x2 a, u64x2 b)
     {
         return detail::scalar_select(mask, a, b);
+    }
+
+    static inline u64x2 min(u64x2 a, u64x2 b)
+    {
+        return detail::scalar_unroll(detail::scalar_min, a, b);
+    }
+
+    static inline u64x2 max(u64x2 a, u64x2 b)
+    {
+        return detail::scalar_unroll(detail::scalar_max, a, b);
     }
 
     // shift by constant
@@ -1252,6 +1282,11 @@ namespace detail {
     static inline s8x16 avg(s8x16 a, s8x16 b)
     {
         return detail::scalar_unroll(detail::scalar_signed_average, a, b);
+    }
+
+    static inline s8x16 ravg(s8x16 a, s8x16 b)
+    {
+        return avg(a + 1, b);
     }
 
     static inline s8x16 abs(s8x16 a)
@@ -1489,6 +1524,11 @@ namespace detail {
         return detail::scalar_unroll(detail::scalar_signed_average, a, b);
     }
 
+    static inline s16x8 ravg(s16x8 a, s16x8 b)
+    {
+        return avg(a + 1, b);
+    }
+
     static inline s16x8 mullo(s16x8 a, s16x8 b)
     {
         return detail::scalar_unroll(detail::scalar_mullo, a, b);
@@ -1568,6 +1608,16 @@ namespace detail {
         return detail::scalar_select(mask, a, b);
     }
 
+    static inline s16x8 min(s16x8 a, s16x8 b)
+    {
+        return detail::scalar_unroll(detail::scalar_min, a, b);
+    }
+
+    static inline s16x8 max(s16x8 a, s16x8 b)
+    {
+        return detail::scalar_unroll(detail::scalar_max, a, b);
+    }
+
     // shift by constant
 
     template <int Count>
@@ -1603,16 +1653,6 @@ namespace detail {
     static inline s16x8 sra(s16x8 a, int count)
     {
         return detail::scalar_shift_right<s16x8, s16>(a, count);
-    }
-
-    static inline s16x8 min(s16x8 a, s16x8 b)
-    {
-        return detail::scalar_unroll(detail::scalar_min, a, b);
-    }
-
-    static inline s16x8 max(s16x8 a, s16x8 b)
-    {
-        return detail::scalar_unroll(detail::scalar_max, a, b);
     }
 
     // -----------------------------------------------------------------
@@ -1756,6 +1796,11 @@ namespace detail {
         return detail::scalar_unroll(detail::scalar_signed_average, a, b);
     }
 
+    static inline s32x4 ravg(s32x4 a, s32x4 b)
+    {
+        return avg(a + 1, b);
+    }
+
     static inline s32x4 mullo(s32x4 a, s32x4 b)
     {
         return detail::scalar_unroll(detail::scalar_mullo, a, b);
@@ -1825,6 +1870,16 @@ namespace detail {
         return detail::scalar_select(mask, a, b);
     }
 
+    static inline s32x4 min(s32x4 a, s32x4 b)
+    {
+        return detail::scalar_unroll(detail::scalar_min, a, b);
+    }
+
+    static inline s32x4 max(s32x4 a, s32x4 b)
+    {
+        return detail::scalar_unroll(detail::scalar_max, a, b);
+    }
+
     // shift by constant
 
     template <int Count>
@@ -1877,16 +1932,6 @@ namespace detail {
     static inline s32x4 sra(s32x4 a, u32x4 count)
     {
         return detail::scalar_shift_right<s32x4, s32, u32x4>(a, count);
-    }
-
-    static inline s32x4 min(s32x4 a, s32x4 b)
-    {
-        return detail::scalar_unroll(detail::scalar_min, a, b);
-    }
-
-    static inline s32x4 max(s32x4 a, s32x4 b)
-    {
-        return detail::scalar_unroll(detail::scalar_max, a, b);
     }
 
     static inline u32 pack(s32x4 s)
@@ -1978,6 +2023,11 @@ namespace detail {
         return detail::scalar_unroll(detail::scalar_signed_average, a, b);
     }
 
+    static inline s64x2 ravg(s64x2 a, s64x2 b)
+    {
+        return avg(a + 1, b);
+    }
+
     // bitwise
 
     static inline s64x2 bitwise_nand(s64x2 a, s64x2 b)
@@ -2040,6 +2090,16 @@ namespace detail {
     static inline s64x2 select(mask64x2 mask, s64x2 a, s64x2 b)
     {
         return detail::scalar_select(mask, a, b);
+    }
+
+    static inline s64x2 min(s64x2 a, s64x2 b)
+    {
+        return detail::scalar_unroll(detail::scalar_min, a, b);
+    }
+
+    static inline s64x2 max(s64x2 a, s64x2 b)
+    {
+        return detail::scalar_unroll(detail::scalar_max, a, b);
     }
 
     // shift by constant

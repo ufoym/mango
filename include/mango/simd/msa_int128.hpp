@@ -101,6 +101,12 @@ namespace simd {
         return __msa_ave_u_b(a, b);
     }
 
+    static inline u8x16 ravg(u8x16 a, u8x16 b)
+    {
+        a = add(a, u8x16_set1(1));
+        return avg(a, b);
+    }
+
     // bitwise
 
     static inline u8x16 bitwise_nand(u8x16 a, u8x16 b)
@@ -266,6 +272,12 @@ namespace simd {
         return __msa_ave_u_h(a, b);
     }
 
+    static inline u16x8 ravg(u16x8 a, u16x8 b)
+    {
+        a = add(a, u16x8_set1(1));
+        return avg(a, b);
+    }
+
     static inline u16x8 mullo(u16x8 a, u16x8 b)
     {
         return (v8u16) __msa_mulv_h((v8i16) a, (v8i16) b);
@@ -336,6 +348,16 @@ namespace simd {
         return (v8u16) __msa_bsel_v((v16u8) mask, (v16u8) a, (v16u8) b);
     }
 
+    static inline u16x8 min(u16x8 a, u16x8 b)
+    {
+        return __msa_min_u_h(a, b);
+    }
+
+    static inline u16x8 max(u16x8 a, u16x8 b)
+    {
+        return __msa_max_u_h(a, b);
+    }
+
     // shift by constant
 
     template <int Count>
@@ -371,16 +393,6 @@ namespace simd {
     static inline u16x8 sra(u16x8 a, int count)
     {
         return (v8u16) __msa_sra_h((v8u16) a, (v8i16) __msa_fill_h(count));
-    }
-
-    static inline u16x8 min(u16x8 a, u16x8 b)
-    {
-        return __msa_min_u_h(a, b);
-    }
-
-    static inline u16x8 max(u16x8 a, u16x8 b)
-    {
-        return __msa_max_u_h(a, b);
     }
 
     // -----------------------------------------------------------------
@@ -490,6 +502,12 @@ namespace simd {
         return __msa_ave_u_w(a, b);
     }
 
+    static inline u32x4 ravg(u32x4 a, u32x4 b)
+    {
+        a = add(a, u32x4_set1(1));
+        return avg(a, b);
+    }
+
     static inline u32x4 mullo(u32x4 a, u32x4 b)
     {
         return (u32x4) __msa_mulv_w((s32x4) a, (s32x4) b);
@@ -560,6 +578,16 @@ namespace simd {
         return (v4u32) __msa_bsel_v((v16u8) mask, (v16u8) a, (v16u8) b);
     }
 
+    static inline u32x4 min(u32x4 a, u32x4 b)
+    {
+        return __msa_min_u_w(a, b);
+    }
+
+    static inline u32x4 max(u32x4 a, u32x4 b)
+    {
+        return __msa_max_u_w(a, b);
+    }
+
     // shift by constant
 
     template <int Count>
@@ -612,16 +640,6 @@ namespace simd {
     static inline u32x4 sra(u32x4 a, u32x4 count)
     {
         return (v4u32) __msa_sra_w((v4i32)a, (v4i32)count);
-    }
-
-    static inline u32x4 min(u32x4 a, u32x4 b)
-    {
-        return __msa_min_u_w(a, b);
-    }
-
-    static inline u32x4 max(u32x4 a, u32x4 b)
-    {
-        return __msa_max_u_w(a, b);
     }
 
     // -----------------------------------------------------------------
@@ -694,6 +712,12 @@ namespace simd {
         return __msa_ave_u_d(a, b);
     }
 
+    static inline u64x2 ravg(u64x2 a, u64x2 b)
+    {
+        a = add(a, u64x2_set1(1));
+        return avg(a, b);
+    }
+
     // bitwise
 
     static inline u64x2 bitwise_nand(u64x2 a, u64x2 b)
@@ -756,6 +780,16 @@ namespace simd {
     static inline u64x2 select(mask64x2 mask, u64x2 a, u64x2 b)
     {
         return (v2u64) __msa_bsel_v((v16u8) mask, (v16u8) a, (v16u8) b);
+    }
+
+    static inline u64x2 min(u64x2 a, u64x2 b)
+    {
+        return __msa_min_u_d(a, b);
+    }
+
+    static inline u64x2 max(u64x2 a, u64x2 b)
+    {
+        return __msa_max_u_d(a, b);
     }
 
     // shift by constant
@@ -874,6 +908,12 @@ namespace simd {
     static inline s8x16 avg(s8x16 a, s8x16 b)
     {
         return __msa_ave_s_b(a, b);
+    }
+
+    static inline s8x16 ravg(s8x16 a, s8x16 b)
+    {
+        a = add(a, s8x16_set1(1));
+        return avg(a, b);
     }
 
     static inline s8x16 abs(s8x16 a)
@@ -1096,6 +1136,12 @@ namespace simd {
         return __msa_ave_s_h(a, b);
     }
 
+    static inline s16x8 ravg(s16x8 a, s16x8 b)
+    {
+        a = add(a, s16x8_set1(1));
+        return avg(a, b);
+    }
+
     static inline s16x8 mullo(s16x8 a, s16x8 b)
     {
         return __msa_mulv_h(a, b);
@@ -1177,6 +1223,16 @@ namespace simd {
         return (v8i16) __msa_bsel_v((v16u8) mask, (v16u8) a, (v16u8) b);
     }
 
+    static inline s16x8 min(s16x8 a, s16x8 b)
+    {
+        return __msa_min_s_h(a, b);
+    }
+
+    static inline s16x8 max(s16x8 a, s16x8 b)
+    {
+        return __msa_max_s_h(a, b);
+    }
+
     // shift by constant
 
     template <int Count>
@@ -1212,16 +1268,6 @@ namespace simd {
     static inline s16x8 sra(s16x8 a, int count)
     {
         return __msa_sra_h(a, __msa_fill_h(count));
-    }
-
-    static inline s16x8 min(s16x8 a, s16x8 b)
-    {
-        return __msa_min_s_h(a, b);
-    }
-
-    static inline s16x8 max(s16x8 a, s16x8 b)
-    {
-        return __msa_max_s_h(a, b);
     }
 
     // -----------------------------------------------------------------
@@ -1360,6 +1406,12 @@ namespace simd {
         return __msa_ave_s_w(a, b);
     }
 
+    static inline s32x4 ravg(s32x4 a, s32x4 b)
+    {
+        a = add(a, s32x4_set1(1));
+        return avg(a, b);
+    }
+
     static inline s32x4 mullo(s32x4 a, s32x4 b)
     {
         return __msa_mulv_w(a, b);
@@ -1430,6 +1482,16 @@ namespace simd {
         return (v4i32) __msa_bsel_v((v16u8) mask, (v16u8) a, (v16u8) b);
     }
 
+    static inline s32x4 min(s32x4 a, s32x4 b)
+    {
+        return __msa_min_s_w(a, b);
+    }
+
+    static inline s32x4 max(s32x4 a, s32x4 b)
+    {
+        return __msa_max_s_w(a, b);
+    }
+
     // shift by constant
 
     template <int Count>
@@ -1491,16 +1553,6 @@ namespace simd {
         u32 z = __msa_copy_s_w(s, 2);
         u32 w = __msa_copy_s_w(s, 3);
         return (w << 24) | (z << 16) | (y << 8) | x;
-    }
-
-    static inline s32x4 min(s32x4 a, s32x4 b)
-    {
-        return __msa_min_s_w(a, b);
-    }
-
-    static inline s32x4 max(s32x4 a, s32x4 b)
-    {
-        return __msa_max_s_w(a, b);
     }
 
     static inline s32x4 unpack(u32 s)
@@ -1582,6 +1634,12 @@ namespace simd {
         return __msa_ave_s_d(a, b);
     }
 
+    static inline s64x2 ravg(s64x2 a, s64x2 b)
+    {
+        a = add(a, s64x2_set1(1));
+        return avg(a, b);
+    }
+
     // bitwise
 
     static inline s64x2 bitwise_nand(s64x2 a, s64x2 b)
@@ -1644,6 +1702,16 @@ namespace simd {
     static inline s64x2 select(mask64x2 mask, s64x2 a, s64x2 b)
     {
         return (v2i64) __msa_bsel_v((v16u8) mask, (v16u8) a, (v16u8) b);
+    }
+
+    static inline s64x2 min(s64x2 a, s64x2 b)
+    {
+        return __msa_min_s_d(a, b);
+    }
+
+    static inline s64x2 max(s64x2 a, s64x2 b)
+    {
+        return __msa_max_s_d(a, b);
     }
 
     // shift by constant

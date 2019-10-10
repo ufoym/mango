@@ -77,6 +77,7 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(u8x64, u8x64, adds)
     SIMD_COMPOSITE_FUNC2(u8x64, u8x64, subs)
     SIMD_COMPOSITE_FUNC2(u8x64, u8x64, avg)
+    SIMD_COMPOSITE_FUNC2(u8x64, u8x64, ravg)
 
     SIMD_COMPOSITE_FUNC2(u8x64, u8x64, bitwise_nand)
     SIMD_COMPOSITE_FUNC2(u8x64, u8x64, bitwise_and)
@@ -137,6 +138,7 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(u16x32, u16x32, adds)
     SIMD_COMPOSITE_FUNC2(u16x32, u16x32, subs)
     SIMD_COMPOSITE_FUNC2(u16x32, u16x32, avg)
+    SIMD_COMPOSITE_FUNC2(u16x32, u16x32, ravg)
 
     SIMD_COMPOSITE_FUNC2(u16x32, u16x32, bitwise_nand)
     SIMD_COMPOSITE_FUNC2(u16x32, u16x32, bitwise_and)
@@ -151,6 +153,9 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(mask16x32, u16x32, compare_ge)
     SIMD_COMPOSITE_FUNC2(mask16x32, u16x32, compare_le)
     SIMD_COMPOSITE_SELECT(mask16x32, u16x32, select)
+
+    SIMD_COMPOSITE_FUNC2(u16x32, u16x32, min)
+    SIMD_COMPOSITE_FUNC2(u16x32, u16x32, max)
 
     // shift by constant
 
@@ -207,9 +212,6 @@ namespace simd {
         return result;
     }
 
-    SIMD_COMPOSITE_FUNC2(u16x32, u16x32, min)
-    SIMD_COMPOSITE_FUNC2(u16x32, u16x32, max)
-
     // -----------------------------------------------------------------
     // u32x16
     // -----------------------------------------------------------------
@@ -258,6 +260,7 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(u32x16, u32x16, add)
     SIMD_COMPOSITE_FUNC2(u32x16, u32x16, sub)
     SIMD_COMPOSITE_FUNC2(u32x16, u32x16, avg)
+    SIMD_COMPOSITE_FUNC2(u32x16, u32x16, ravg)
     SIMD_COMPOSITE_FUNC2(u32x16, u32x16, mullo)
 
     SIMD_COMPOSITE_FUNC2(u32x16, u32x16, bitwise_nand)
@@ -273,6 +276,9 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(mask32x16, u32x16, compare_ge)
     SIMD_COMPOSITE_FUNC2(mask32x16, u32x16, compare_le)
     SIMD_COMPOSITE_SELECT(mask32x16, u32x16, select)
+
+    SIMD_COMPOSITE_FUNC2(u32x16, u32x16, min)
+    SIMD_COMPOSITE_FUNC2(u32x16, u32x16, max)
 
     // shift by constant
 
@@ -352,9 +358,6 @@ namespace simd {
         return a;
     }
 
-    SIMD_COMPOSITE_FUNC2(u32x16, u32x16, min)
-    SIMD_COMPOSITE_FUNC2(u32x16, u32x16, max)
-
     // -----------------------------------------------------------------
     // u64x8
     // -----------------------------------------------------------------
@@ -402,6 +405,7 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(u64x8, u64x8, add)
     SIMD_COMPOSITE_FUNC2(u64x8, u64x8, sub)
     SIMD_COMPOSITE_FUNC2(u64x8, u64x8, avg)
+    SIMD_COMPOSITE_FUNC2(u64x8, u64x8, ravg)
 
     SIMD_COMPOSITE_FUNC2(u64x8, u64x8, bitwise_nand)
     SIMD_COMPOSITE_FUNC2(u64x8, u64x8, bitwise_and)
@@ -416,6 +420,9 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(mask64x8, u64x8, compare_ge)
     SIMD_COMPOSITE_FUNC2(mask64x8, u64x8, compare_le)
     SIMD_COMPOSITE_SELECT(mask64x8, u64x8, select)
+
+    SIMD_COMPOSITE_FUNC2(u64x8, u64x8, min)
+    SIMD_COMPOSITE_FUNC2(u64x8, u64x8, max)
 
     // shift by constant
 
@@ -496,6 +503,7 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(s8x64, s8x64, adds)
     SIMD_COMPOSITE_FUNC2(s8x64, s8x64, subs)
     SIMD_COMPOSITE_FUNC2(s8x64, s8x64, avg)
+    SIMD_COMPOSITE_FUNC2(s8x64, s8x64, ravg)
     SIMD_COMPOSITE_FUNC1(s8x64, s8x64, abs)
     SIMD_COMPOSITE_FUNC1(s8x64, s8x64, neg)
 
@@ -558,6 +566,7 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(s16x32, s16x32, adds)
     SIMD_COMPOSITE_FUNC2(s16x32, s16x32, subs)
     SIMD_COMPOSITE_FUNC2(s16x32, s16x32, avg)
+    SIMD_COMPOSITE_FUNC2(s16x32, s16x32, ravg)
     SIMD_COMPOSITE_FUNC1(s16x32, s16x32, abs)
     SIMD_COMPOSITE_FUNC1(s16x32, s16x32, neg)
 
@@ -574,6 +583,9 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(mask16x32, s16x32, compare_ge)
     SIMD_COMPOSITE_FUNC2(mask16x32, s16x32, compare_le)
     SIMD_COMPOSITE_SELECT(mask16x32, s16x32, select)
+
+    SIMD_COMPOSITE_FUNC2(s16x32, s16x32, min)
+    SIMD_COMPOSITE_FUNC2(s16x32, s16x32, max)
 
     // shift by constant
 
@@ -630,9 +642,6 @@ namespace simd {
         return result;
     }
 
-    SIMD_COMPOSITE_FUNC2(s16x32, s16x32, min)
-    SIMD_COMPOSITE_FUNC2(s16x32, s16x32, max)
-
     // -----------------------------------------------------------------
     // s32x16
     // -----------------------------------------------------------------
@@ -681,6 +690,7 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(s32x16, s32x16, add)
     SIMD_COMPOSITE_FUNC2(s32x16, s32x16, sub)
     SIMD_COMPOSITE_FUNC2(s32x16, s32x16, avg)
+    SIMD_COMPOSITE_FUNC2(s32x16, s32x16, ravg)
     SIMD_COMPOSITE_FUNC2(s32x16, s32x16, mullo)
     SIMD_COMPOSITE_FUNC1(s32x16, s32x16, abs)
     SIMD_COMPOSITE_FUNC1(s32x16, s32x16, neg)
@@ -698,6 +708,9 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(mask32x16, s32x16, compare_ge)
     SIMD_COMPOSITE_FUNC2(mask32x16, s32x16, compare_le)
     SIMD_COMPOSITE_SELECT(mask32x16, s32x16, select)
+
+    SIMD_COMPOSITE_FUNC2(s32x16, s32x16, min)
+    SIMD_COMPOSITE_FUNC2(s32x16, s32x16, max)
 
     // shift by constant
 
@@ -777,9 +790,6 @@ namespace simd {
         return a;
     }
 
-    SIMD_COMPOSITE_FUNC2(s32x16, s32x16, min)
-    SIMD_COMPOSITE_FUNC2(s32x16, s32x16, max)
-
     // -----------------------------------------------------------------
     // s64x8
     // -----------------------------------------------------------------
@@ -827,6 +837,7 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(s64x8, s64x8, add)
     SIMD_COMPOSITE_FUNC2(s64x8, s64x8, sub)
     SIMD_COMPOSITE_FUNC2(s64x8, s64x8, avg)
+    SIMD_COMPOSITE_FUNC2(s64x8, s64x8, ravg)
 
     SIMD_COMPOSITE_FUNC2(s64x8, s64x8, bitwise_nand)
     SIMD_COMPOSITE_FUNC2(s64x8, s64x8, bitwise_and)
@@ -841,6 +852,9 @@ namespace simd {
     SIMD_COMPOSITE_FUNC2(mask64x8, s64x8, compare_ge)
     SIMD_COMPOSITE_FUNC2(mask64x8, s64x8, compare_le)
     SIMD_COMPOSITE_SELECT(mask64x8, s64x8, select)
+
+    SIMD_COMPOSITE_FUNC2(s64x8, s64x8, min)
+    SIMD_COMPOSITE_FUNC2(s64x8, s64x8, max)
 
     // shift by constant
 
