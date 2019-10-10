@@ -454,6 +454,7 @@ namespace
         return value * ((1 << to) - 1) / ((1 << from) - 1);
     }
 
+#if 0 // TODO: should use these (specification conforming)
     constexpr u32 pvrtc2_alpha0(u32 alpha)
     {
         alpha = (alpha << 1) | 0;
@@ -465,6 +466,7 @@ namespace
         alpha = (alpha << 1) | 1;
         return (alpha << 4) | alpha;
     }
+#endif
 
     static inline
     ColorRGBA pvrtc2_lerp2(ColorRGBA a, ColorRGBA b, int mod)
