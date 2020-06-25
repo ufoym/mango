@@ -14,6 +14,7 @@ project(
 )
 
 mango_extra_cpp_options = []
+mango_extra_link_args = []
 
 cpp = meson.get_compiler('cpp')
 
@@ -466,6 +467,7 @@ external_zpng_sources = files(
 if cpp.get_id() == 'msvc'
     # target_compile_options(mango PUBLIC "/Gm") deprecated
     mango_extra_cpp_options += '/DUNICODE'
+    mango_extra_link_args += '/DUNICODE'
 
     if enable_fast_math
         mango_extra_cpp_options += '/fp:fast'
@@ -564,14 +566,16 @@ libtype = get_option('default_library')
 threads_dep = dependency('threads')
 dl_dep = cpp.find_library('dl',  required : false)
 
-mango_deps             = [ threads_dep ]
-mango_framebuffer_deps = [ ]
-mango_opengl_deps      = [ ]
-mango_vulkan_deps      = [ ]
+mango_deps                = [ threads_dep ]
+mango_framebuffer_deps    = [ ]
+mango_opengl_deps         = [ ]
+mango_vulkan_deps         = [ ]
 
 if host_machine.system() == 'windows'
+    opengl_headers_dep = subproject('khronos').get_variable('opengl_headers_dep')
     mango_deps += cpp.find_library('opengl32', required : true)
     mango_deps += cpp.find_library('gdi32',    required : true)
+    mango_deps += opengl_headers_dep
 elif host_machine.system() == 'darwin'
     opengl_dep = dependency('appleframeworks', modules: ['OpenGL'], required : true)
     cocoa_dep  = dependency('appleframeworks', modules: ['Cocoa'],  required : true)
@@ -615,7 +619,8 @@ mango = library('mango',
         'source/external/libwebp'
     ],
     dependencies : mango_deps,
-    cpp_args     : mango_extra_cpp_options
+    cpp_args     : mango_extra_cpp_options,
+    link_args    : mango_extra_link_args
 )
 
 mango_dep = declare_dependency(
@@ -636,6 +641,12 @@ mango_framebuffer = library('mango-framebuffer',
 mango_opengl = library('mango-opengl',
     sources      : window_sources + opengl_sources,
     dependencies : mango_opengl_deps
+)
+
+mango_opengl_dep = declare_dependency(
+    link_with           : mango_opengl,
+    include_directories : include_directories('include'),
+    dependencies        : mango_deps + mango_opengl_deps
 )
 
 mango_vulkan = library('mango-vulkan',
