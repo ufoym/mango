@@ -13,11 +13,6 @@ project(
     ]
 )
 
-mango_extra_cpp_options = []
-mango_extra_link_args = []
-
-cpp = meson.get_compiler('cpp')
-
 enable_fast_math = get_option('enable_fast_math')
 enable_sse2      = get_option('enable_sse2')
 enable_sse4      = get_option('enable_sse4')
@@ -30,11 +25,13 @@ enable_bmi       = get_option('enable_bmi')
 enable_bmi2      = get_option('enable_bmi2')
 enable_fma       = get_option('enable_fma')
 
+add_project_arguments('-DMANGO_OPENGL_CORE_PROFILE', language: ['c', 'cpp'])
+
 mango_all_archive_formats = [ 'ZIP', 'RAR', 'MGX' ]
 foreach archive_format : mango_all_archive_formats
     key = 'mango_disable_archive_@0@'.format(archive_format)
     if get_option(key)
-        mango_extra_cpp_options += [ '-D@0@'.format(key) ]
+        add_project_arguments('-D@0@'.format(key), language: ['c', 'cpp'])
     endif
 endforeach
 
@@ -43,12 +40,12 @@ mango_all_image_formats = [ 'ASTC', 'ATARI', 'BMP', 'C64', 'DDS', 'GIF', 'HDR', 
 foreach image_format : mango_all_image_formats
     key = 'mango_disable_image_@0@'.format(image_format)
     if get_option(key)
-        mango_extra_cpp_options += [ '-D@0@'.format(key) ]
+        add_project_arguments('-D@0@'.format(key), language: ['c', 'cpp'])
     endif
 endforeach
 
 if get_option('mango_disable_license_gpl')
-    mango_extra_cpp_options += [ '-DMANGO_DISABLE_LICENSE_GPL' ]
+    add_project_arguments('-DMANGO_DISABLE_LICENSE_GPL', language: ['c', 'cpp'])
 endif
 
 # ------------------------------------------------------------------------------
@@ -464,99 +461,101 @@ external_zpng_sources = files(
 # configuration
 # ------------------------------------------------------------------------------
 
+cpp = meson.get_compiler('cpp')
+
+message('cpp = @0@'.format(cpp.get_id()))
+
 if cpp.get_id() == 'msvc'
     # target_compile_options(mango PUBLIC "/Gm") deprecated
-    mango_extra_cpp_options += '/DUNICODE'
-    mango_extra_link_args += '/DUNICODE'
+    add_project_arguments('/DUNICODE', '/D_UNICODE', language: ['c', 'cpp'])
 
     if enable_fast_math
-        mango_extra_cpp_options += '/fp:fast'
+        add_project_arguments('/fp:fast', language: ['c', 'cpp'])
     endif
 
     if enable_avx512
         message('SIMD: AVX-512 (2015)')
-        mango_extra_cpp_options += [ '-D__AVX512F__', '-D__AVX512DQ__' ]
+        add_project_arguments('/D__AVX512F__', '/D__AVX512DQ__', language: ['c', 'cpp'])
     elif enable_avx2
         message('SIMD: AVX2 (2013)')
-        mango_extra_cpp_options += [ '/arch:AVX2' ]
+        add_project_arguments('/arch:AVX2', language: ['c', 'cpp'])
     elif enable_avx
         message('SIMD: AVX (2008)')
-        mango_extra_cpp_options += [ '/arch:AVX' ]
+        add_project_arguments('/arch:AVX', language: ['c', 'cpp'])
     endif
 else
-    mango_extra_cpp_options += [ '-Wall' ]
+    if host_machine.system() == 'windows'
+        add_project_arguments('-DUNICODE', '-D_UNICODE', language: ['c', 'cpp'])
+    endif
+
+    add_project_arguments('-Wall', language: ['c', 'cpp'])
     # set(CMAKE_CXX_FLAGS_DEBUG "-g")
     # set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-    if host_machine.system() == 'windows'
-        mango_extra_cpp_options += [ '-DUNICODE' ]
-    endif
-
     if cpp.get_id() == 'gcc'
-        mango_extra_cpp_options += [ '-ftree-vectorize' ]
+        add_project_arguments('-ftree-vectorize', language: ['c', 'cpp'])
     endif
 
     if enable_fast_math
-        mango_extra_cpp_options += [ '-ffast-math' ]
+        add_project_arguments('-ffast-math', language: ['c', 'cpp'])
     endif
 
     if (host_machine.cpu_family() == 'arm' and enable_neon) or host_machine.cpu_family() == 'aarch64'
         message('SIMD: NEON')
-        mango_extra_cpp_options += [ '-mfpu=neon', '-mfloat-abi=hard' ] # add_definitions
-        mango_extra_cpp_options += [ '-fpermissive', '-Wno-psabi' ] # set(CMAKE_CXX_FLAGS
+        add_project_arguments('-mfpu=neon', '-mfloat-abi=hard', language: ['c', 'cpp'])
+        add_project_arguments('-fpermissive', '-Wno-psabi', language: ['c', 'cpp'])
     endif
 
-    # 'x86_64' 'aarch64' 'arm' 'ppc' 'ppc64' 'x86'
     if host_machine.cpu_family() == 'x86'  or host_machine.cpu_family() == 'x86'
         # enable AES (2008) by default
-        mango_extra_cpp_options += [ '-maes' ]
+        add_project_arguments('-maes', language: ['c', 'cpp'])
 
         # enable CLMUL (2008) by default
-        mango_extra_cpp_options += [ '-mpclmul' ]
+        add_project_arguments('-mpclmul', language: ['c', 'cpp'])
 
         # half conversion instructions
         if enable_f16c
             message('F16C: half conversion enabled (2012)')
-            mango_extra_cpp_options += [ '-mf16c' ]
+            add_project_arguments('-mf16c', language: ['c', 'cpp'])
         endif
 
         # bit manipulation instruction set 1
         if enable_bmi
             message('BMI+LZCNT: enabled (2013)')
-            mango_extra_cpp_options += [ '-mbmi' ]
-            mango_extra_cpp_options += [ '-mlzcnt' ]
+            add_project_arguments('-mbmi', language: ['c', 'cpp'])
+            add_project_arguments('-mlzcnt', language: ['c', 'cpp'])
         endif
 
         # bit manipulation instruction set 2
         if enable_bmi2
             message('BMI2: enabled (2013)')
-            mango_extra_cpp_options += [ '-mbmi2' ]
+            add_project_arguments('-mbmi2', language: ['c', 'cpp'])
         endif
 
         # fused multiply-add
         if enable_fma
             message('FMA: enabled (2013)')
-            mango_extra_cpp_options += [ '-mfma' ]
+            add_project_arguments('-mfma', language: ['c', 'cpp'])
         endif
 
         # enable only one (the most recent) SIMD extension
         if enable_avx512
             message('SIMD: AVX-512 (2015)')
-            mango_extra_cpp_options += [ '-mavx512dq' ]
-            mango_extra_cpp_options += [ '-mavx512vl' ]
-            mango_extra_cpp_options += [ '-mavx512bw' ]
+            add_project_arguments('-mavx512dq', language: ['c', 'cpp'])
+            add_project_arguments('-mavx512vl', language: ['c', 'cpp'])
+            add_project_arguments('-mavx512bw', language: ['c', 'cpp'])
         elif enable_avx2
             message('SIMD: AVX2 (2013)')
-            mango_extra_cpp_options += [ '-mavx2' ]
+            add_project_arguments('-mavx2', language: ['c', 'cpp'])
         elif enable_avx
             message('SIMD: AVX (2008)')
-            mango_extra_cpp_options += [ '-mavx' ]
+            add_project_arguments('-mavx', language: ['c', 'cpp'])
         elif enable_sse4
             message('SIMD: SSE4.2 (2006)')
-            mango_extra_cpp_options += [ '-msse4' ]
+            add_project_arguments('-msse4', language: ['c', 'cpp'])
         elif enable_sse2
             message('SIMD: SSE2 (2001)')
-            mango_extra_cpp_options += [ '-msse2' ]
+            add_project_arguments('-msse2', language: ['c', 'cpp'])
         endif
     endif
 endif
@@ -564,36 +563,29 @@ endif
 libtype = get_option('default_library')
 
 threads_dep = dependency('threads')
-dl_dep = cpp.find_library('dl',  required : false)
-
-mango_deps                = [ threads_dep ]
-mango_framebuffer_deps    = [ ]
-mango_opengl_deps         = [ ]
-mango_vulkan_deps         = [ ]
-
-if host_machine.system() == 'windows'
-    opengl_headers_dep = subproject('khronos').get_variable('opengl_headers_dep')
-    mango_deps += cpp.find_library('opengl32', required : true)
-    mango_deps += cpp.find_library('gdi32',    required : true)
-    mango_deps += opengl_headers_dep
-elif host_machine.system() == 'darwin'
-    opengl_dep = dependency('appleframeworks', modules: ['OpenGL'], required : true)
-    cocoa_dep  = dependency('appleframeworks', modules: ['Cocoa'],  required : true)
-    if libtype == 'shared'
-        mango_framebuffer_deps += [ cocoa_dep ]
-        mango_opengl_deps      += [ cocoa_dep, opengl_dep ]
-        mango_vulkan_deps      += [ cocoa_dep ]
-    endif
-    mango_deps += [ dl_dep ]
-    mango_extra_cpp_options += '-mmacosx-version-min=10.13'
-elif host_machine.system() == 'linux'
-    gl_dep  = cpp.find_library('GL',  required : true)
-    x11_dep = cpp.find_library('X11', required : true)
-    mango_deps        += [ dl_dep, gl_dep, x11_dep ]
-    mango_opengl_deps += [ dl_dep, gl_dep, x11_dep ]
+if host_machine.system() != 'windows'
+    dl_dep = cpp.find_library('dl', required : false)
 endif
 
-mango = library('mango',
+mango_deps             = [ threads_dep ]
+mango_public_deps      = [ ]
+mango_framebuffer_deps = [ ]
+mango_opengl_deps      = [ ]
+mango_vulkan_deps      = [ ]
+
+opengl_dep = dependency('gl')
+mango_public_deps += opengl_dep
+if host_machine.system() == 'windows'
+    khronos_headers_dep = subproject('khronos').get_variable('khronos_opengl_headers_dep') 
+    opengl_dep = dependency('gl')
+elif host_machine.system() == 'darwin'
+    mango_deps += [ dl_dep ]
+elif host_machine.system() == 'linux'
+    x11_dep = cpp.find_library('X11', required : true)
+    mango_opengl_deps += [ dl_dep, x11_dep ]
+endif
+
+mango = static_library('mango',
     sources : [
         core_sources,
         filesystem_sources,
@@ -618,40 +610,49 @@ mango = library('mango',
         'include',
         'source/external/libwebp'
     ],
-    dependencies : mango_deps,
-    cpp_args     : mango_extra_cpp_options,
-    link_args    : mango_extra_link_args
+    dependencies : mango_deps
 )
+
+mango_inc = include_directories('include')
 
 mango_dep = declare_dependency(
     link_with           : mango,
-    include_directories : include_directories('include'),
-    dependencies        : mango_deps
+    include_directories : mango_inc,
+    dependencies        : mango_public_deps,
+    compile_args        : [ '-DMANGO_OPENGL_CORE_PROFILE' ]
 )
 
 mango_framebuffer_deps += [ mango_dep ]
-mango_opengl_deps      += [ mango_dep ]
-mango_vulkan_deps      += [ mango_dep ]
-
-mango_framebuffer = library('mango-framebuffer',
-    sources      : window_sources + framebuffer_sources,
-    dependencies : mango_framebuffer_deps
+mango_framebuffer = static_library('mango-framebuffer',
+    sources             : window_sources + framebuffer_sources,
+    dependencies        : mango_framebuffer_deps,
+    include_directories : mango_inc,
+    cpp_args            : [ '-DMANGO_OPENGL_CORE_PROFILE' ]
 )
 
-mango_opengl = library('mango-opengl',
-    sources      : window_sources + opengl_sources,
-    dependencies : mango_opengl_deps
+mango_opengl = static_library('mango-opengl',
+    sources             : window_sources + opengl_sources,
+    link_with           : mango_framebuffer,
+    dependencies        : mango_opengl_deps,
+    include_directories : mango_inc,
+    cpp_args            : [ '-DMANGO_OPENGL_CORE_PROFILE' ]
 )
 
 mango_opengl_dep = declare_dependency(
     link_with           : mango_opengl,
-    include_directories : include_directories('include'),
-    dependencies        : mango_deps + mango_opengl_deps
+    include_directories : mango_inc,
+    compile_args        : [ '-DMANGO_OPENGL_CORE_PROFILE' ]
 )
 
-mango_vulkan = library('mango-vulkan',
-    sources      : window_sources + vulkan_sources,
-    dependencies : mango_vulkan_deps
+mango_vulkan = static_library('mango-vulkan',
+    sources             : window_sources + vulkan_sources,
+    link_with           : mango_framebuffer,
+    include_directories : mango_inc
+)
+
+mango_vulkan_dep = declare_dependency(
+    link_with           : mango_vulkan,
+    include_directories : mango_inc,
 )
 
 
