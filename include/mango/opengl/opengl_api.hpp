@@ -34,10 +34,6 @@
         #include "func/glext.hpp"
     #endif
 
-    // #include "khronos/GL/wgl.h"
-    // #include "khronos/GL/wglext.h"
-    // #include "func/wglext.hpp"
-
     #undef GLEXT_PROC
 
 #elif defined(MANGO_PLATFORM_OSX)
@@ -59,6 +55,7 @@
 
         #define GL_GLEXT_PROTOTYPES
         #include "khronos/GL/glext.h"
+        #undef GL_GLEXT_PROTOTYPES
     #endif
 
 #elif defined(MANGO_PLATFORM_IOS)
@@ -104,6 +101,7 @@
         #define GL_GLEXT_PROTOTYPES
         #include <GL/gl.h>
         #include <GL/glext.h>
+        #undef GL_GLEXT_PROTOTYPES
     #endif
 
     // #define GLX_GLXEXT_PROTOTYPES
