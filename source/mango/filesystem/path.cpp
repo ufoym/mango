@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <mango/filesystem/path.hpp>
 
-namespace mango {
-namespace filesystem {
+namespace mango::filesystem
+{
 
     // -----------------------------------------------------------------
     // Path
@@ -35,12 +35,7 @@ namespace filesystem {
     {
         if (m_index_is_dirty)
         {
-            AbstractMapper* mapper = *m_mapper;
-            if (mapper)
-            {
-                mapper->getIndex(m_index, m_mapper->basepath());
-            }
-
+            m_mapper->getIndex(m_index, m_mapper->basepath());
             m_index_is_dirty = false;
         }
     }
@@ -89,5 +84,4 @@ namespace filesystem {
         return filename.substr(0, n);
     }
 
-} // namespace filesystem
-} // namespace mango
+} // namespace mango::filesystem

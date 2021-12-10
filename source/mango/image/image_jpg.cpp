@@ -1,19 +1,16 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/core.hpp>
 #include <mango/image/image.hpp>
 
-#ifdef MANGO_ENABLE_IMAGE_JPG
-
 #include "../jpeg/jpeg.hpp"
-
-#define ID "[ImageDecoder.JPG] "
 
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
 	// ------------------------------------------------------------
 	// ImageDecoder
@@ -47,14 +44,13 @@ namespace
             return m_parser.exif_memory;
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
-            MANGO_UNREFERENCED(palette);
             MANGO_UNREFERENCED(level);
             MANGO_UNREFERENCED(depth);
             MANGO_UNREFERENCED(face);
 
-            ImageDecodeStatus status = m_parser.decode(dest);
+            ImageDecodeStatus status = m_parser.decode(dest, options);
             return status;
         }
     };
@@ -69,19 +65,15 @@ namespace
     // ImageEncoder
     // ------------------------------------------------------------
 
-#ifdef MANGO_ENABLE_LICENSE_GPL
-
     ImageEncodeStatus imageEncode(Stream& stream, const Surface& surface, const ImageEncodeOptions& options)
     {
         ImageEncodeStatus status = jpeg::encodeImage(stream, surface, options);
         return status;
     }
 
-#endif // MANGO_ENABLE_LICENSE_GPL
-
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderJPG()
@@ -90,15 +82,8 @@ namespace mango
         registerImageDecoder(createInterface, ".jpeg");
         registerImageDecoder(createInterface, ".jfif");
         registerImageDecoder(createInterface, ".mpo");
-
-#ifdef MANGO_ENABLE_LICENSE_GPL
-
         registerImageEncoder(imageEncode, ".jpg");
         registerImageEncoder(imageEncode, ".jpeg");
-
-#endif // MANGO_ENABLE_LICENSE_GPL
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_JPG
+} // namespace mango::image

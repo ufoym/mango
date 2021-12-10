@@ -7,7 +7,7 @@
 #include <mango/math/vector.hpp>
 #include <mango/math/vector_float32x4.hpp>
 
-namespace mango
+namespace mango::math
 {
 
     template <>
@@ -58,6 +58,20 @@ namespace mango
         {
         }
 
+        explicit Vector(float16 x, float16 y, float16 z, float16 w)
+        {
+            float16* v = data();
+            v[0] = x;
+            v[1] = y;
+            v[2] = z;
+            v[3] = w;
+        }
+
+        explicit Vector(float x, float y, float z, float w)
+            : m(simd::convert<simd::f16x4>(simd::f32x4_set(x, y, z, w)))
+        {
+        }
+
         Vector& operator = (const Vector<float, 4>& v)
         {
             m = simd::convert<simd::f16x4>(v.m);
@@ -100,4 +114,4 @@ namespace mango
         }
     };
 
-} // namespace mango
+} // namespace mango::math

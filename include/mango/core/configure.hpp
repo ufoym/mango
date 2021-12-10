@@ -23,25 +23,25 @@
 
 #elif (defined(_XBOX_VER) && (_XBOX_VER >= 200)) || defined(_XENON)
 
-	// Microsoft XBOX 360
+    // Microsoft XBOX 360
     #define MANGO_PLATFORM_XBOX360
     #define MANGO_PLATFORM_NAME "Xbox 360"
 
 #elif defined(_DURANGO)
 
-	// Microsoft XBOX ONE
+    // Microsoft XBOX ONE
     #define MANGO_PLATFORM_XBOXONE
     #define MANGO_PLATFORM_NAME "Xbox One"
 
 #elif defined(__CELLOS_LV2__)
 
-	// SONY Playstation 3
+    // SONY Playstation 3
     #define MANGO_PLATFORM_PS3
     #define MANGO_PLATFORM_NAME "Playstation 3"
 
 #elif defined(__ORBIS__)
 
-	// SONY Playstation 4
+    // SONY Playstation 4
     #define MANGO_PLATFORM_PS4
     #define MANGO_PLATFORM_NAME "Playstation 4"
 
@@ -179,10 +179,10 @@
     // Microsoft Visual C++
     #define MANGO_COMPILER_MICROSOFT
 
-	// noexcept specifier support was added in Visual Studio 2015
-	#if _MSC_VER < 1900
-		#define noexcept
-	#endif
+    // noexcept specifier support was added in Visual Studio 2015
+    #if _MSC_VER < 1900
+        #define noexcept
+    #endif
 
     // Fix <cmath> macros
     #ifndef _USE_MATH_DEFINES
@@ -198,7 +198,7 @@
 
     // AVX and AVX2 include support for these
     #if defined(__AVX__) || defined(__AVX2__)
-		#ifndef __SSE2__
+        #ifndef __SSE2__
         #define __SSE2__
         #endif
 
@@ -310,7 +310,7 @@
 
     #define MANGO_CPU_NAME "PowerPC"
 
-#elif defined(__powerpc__) || defined(_M_PPC)
+#elif defined(__POWERPC__) || defined(__ppc__) || defined(__powerpc__) || defined(_M_PPC)
 
     // 32 bit PowerPC
     #define MANGO_CPU_PPC
@@ -464,11 +464,13 @@
     #endif
 
     #ifdef __BMI__
+        // NOTE: slow on AMD Zen architecture (emulated in microcode)
         #define MANGO_ENABLE_BMI
         #include <immintrin.h>
     #endif
 
     #ifdef __BMI2__
+        // NOTE: slow on AMD Zen architecture (emulated in microcode)
         #define MANGO_ENABLE_BMI2
         #include <immintrin.h>
     #endif
@@ -508,6 +510,11 @@
     #if defined(__ARM_NEON__) || defined(__ARM_NEON) || defined(__ARM_FEATURE_CRYPTO)
         // ARM NEON vector instrinsics
         #define MANGO_ENABLE_NEON
+
+        #ifdef __aarch64__
+            #define MANGO_ENABLE_NEON64
+        #endif
+
         #if defined(_M_ARM64)
             #include <arm64_neon.h>
         #else
@@ -517,7 +524,7 @@
 
     // ARM FP feature bits
     #if ((__ARM_FP & 0x2) != 0)
-        #define MANGO_ENABLE_FP16
+        #define MANGO_ENABLE_ARM_FP16
     #endif
 
     #ifdef __ARM_FEATURE_CRC32
@@ -593,6 +600,10 @@
     // C++17
 #endif
 
+#if __cplusplus >= 202002L
+    // C++20
+#endif
+
 #if defined(__FAST_MATH__) || defined(_M_FP_FAST)
     #define MANGO_FAST_MATH
 #endif
@@ -618,131 +629,6 @@
     #define MANGO_IMPORT
     #define MANGO_EXPORT
 
-#endif
-
-// -----------------------------------------------------------------------
-// licenses
-// -----------------------------------------------------------------------
-
-#ifndef MANGO_DISABLE_LICENSE_ZLIB
-    #define MANGO_ENABLE_LICENSE_ZLIB
-    // bzip2
-#endif
-
-#ifndef MANGO_DISABLE_LICENSE_BSD
-    #define MANGO_ENABLE_LICENSE_BSD
-    // lz4, jpeg.arithmetic
-#endif
-
-#ifndef MANGO_DISABLE_LICENSE_GPL
-    #define MANGO_ENABLE_LICENSE_GPL
-    // unrar, jpeg.encoder
-#endif
-
-#ifndef MANGO_DISABLE_LICENSE_MICROSOFT
-    #define MANGO_ENABLE_LICENSE_MICROSOFT
-    // BC4,5,6,7 texture compression
-#endif
-
-#ifndef MANGO_DISABLE_LICENSE_APACHE
-    #define MANGO_ENABLE_LICENSE_APACHE
-    // ETC1, ETC2, ASTC, WebP
-#endif
-
-// -----------------------------------------------------------------------
-// archivers
-// -----------------------------------------------------------------------
-
-#ifndef MANGO_DISABLE_ARCHIVE_ZIP
-    #define MANGO_ENABLE_ARCHIVE_ZIP
-#endif
-
-#if !defined(MANGO_DISABLE_ARCHIVE_RAR) && defined(MANGO_ENABLE_LICENSE_GPL)
-    #define MANGO_ENABLE_ARCHIVE_RAR
-#endif
-
-#ifndef MANGO_DISABLE_ARCHIVE_MGX
-    #define MANGO_ENABLE_ARCHIVE_MGX
-#endif
-
-// -----------------------------------------------------------------------
-// image codecs
-// -----------------------------------------------------------------------
-
-#ifndef MANGO_DISABLE_IMAGE_ASTC
-    #define MANGO_ENABLE_IMAGE_ASTC
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_ATARI
-    #define MANGO_ENABLE_IMAGE_ATARI
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_BMP
-    #define MANGO_ENABLE_IMAGE_BMP
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_C64
-    #define MANGO_ENABLE_IMAGE_C64
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_DDS
-    #define MANGO_ENABLE_IMAGE_DDS
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_GIF
-    #define MANGO_ENABLE_IMAGE_GIF
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_HDR
-    #define MANGO_ENABLE_IMAGE_HDR
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_IFF
-    #define MANGO_ENABLE_IMAGE_IFF
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_JPG
-    #define MANGO_ENABLE_IMAGE_JPG
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_KTX
-    #define MANGO_ENABLE_IMAGE_KTX
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_PCX
-    #define MANGO_ENABLE_IMAGE_PCX
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_PKM
-    #define MANGO_ENABLE_IMAGE_PKM
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_PNG
-    #define MANGO_ENABLE_IMAGE_PNG
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_PNM
-    #define MANGO_ENABLE_IMAGE_PNM
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_PVR
-    #define MANGO_ENABLE_IMAGE_PVR
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_SGI
-    #define MANGO_ENABLE_IMAGE_SGI
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_TGA
-    #define MANGO_ENABLE_IMAGE_TGA
-#endif
-
-#if !defined(MANGO_DISABLE_IMAGE_WEBP) && defined(MANGO_ENABLE_LICENSE_APACHE)
-    #define MANGO_ENABLE_IMAGE_WEBP
-#endif
-
-#ifndef MANGO_DISABLE_IMAGE_ZPNG
-    #define MANGO_ENABLE_IMAGE_ZPNG
 #endif
 
 // -----------------------------------------------------------------------

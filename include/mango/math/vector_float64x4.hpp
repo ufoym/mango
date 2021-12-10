@@ -7,7 +7,7 @@
 #include <mango/math/vector.hpp>
 #include <mango/math/vector_float64x2.hpp>
 
-namespace mango
+namespace mango::math
 {
 
     // ------------------------------------------------------------------
@@ -153,7 +153,7 @@ namespace mango
             return m;
         }
 
-#ifdef float256_is_hardware_vector
+#ifdef simd_float256_is_hardware_vector
         operator simd::f64x4::vector () const
         {
             return m.data;
@@ -556,4 +556,4 @@ namespace mango
         return simd::select(mask, a, b);
     }
 
-} // namespace mango
+} // namespace mango::math

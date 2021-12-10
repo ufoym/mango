@@ -1,12 +1,11 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
+#include <cstring>
 #include <mango/core/core.hpp>
 #include <mango/image/image.hpp>
 #include <mango/math/math.hpp>
-
-#ifdef MANGO_ENABLE_IMAGE_PNG
 
 // https://www.w3.org/TR/2003/REC-PNG-20031110/
 // https://wiki.mozilla.org/APNG_Specification
@@ -19,6 +18,8 @@
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
+    using namespace mango::math;
 
     constexpr int PNG_SIMD_PADDING = 16;
     constexpr int PNG_FILTER_BYTE = 1;
@@ -59,6 +60,27 @@ namespace
         }
         return text;
     }
+
+    // ------------------------------------------------------------
+    // png_strnlen
+    // ------------------------------------------------------------
+
+    // Long story short; the strnlen() is not part of std and not available
+    // on all platforms or tool-chains so we have to wrap it like this. :(
+
+#if defined(__ppc__)
+    size_t png_strnlen(const char* s, size_t maxlen)
+    {
+        for (size_t i = 0; i < maxlen ; ++i)
+        {
+            if (s[i] == 0)
+                return i;
+        }
+        return maxlen;
+    }
+#else
+    #define png_strnlen strnlen
+#endif
 
     // ------------------------------------------------------------
     // Filter
@@ -218,12 +240,8 @@ namespace
         return d;
     }
 
-    inline int16x8 nearest_sse2(u8* scan, const u8* prev, __m128i zero, int16x8 a, int16x8 b, int16x8 c, int16x8 d)
+    inline int16x8 nearest_sse2(int16x8 a, int16x8 b, int16x8 c, int16x8 d)
     {
-        MANGO_UNREFERENCED(scan);
-        MANGO_UNREFERENCED(prev);
-        MANGO_UNREFERENCED(zero);
-
         int16x8 pa = b - c;
         int16x8 pb = a - c;
         int16x8 pc = pa + pb;
@@ -343,7 +361,7 @@ namespace
             int16x8 a = d;
             b = _mm_unpacklo_epi8(load3(prev + x), zero);
             d = _mm_unpacklo_epi8(load3(scan + x), zero);
-            d = nearest_sse2(scan, prev, zero, a, b, c, d);
+            d = nearest_sse2(a, b, c, d);
             store3(scan + x, _mm_packus_epi16(d, d));
         }
     }
@@ -362,7 +380,7 @@ namespace
             int16x8 a = d;
             b = _mm_unpacklo_epi8(load4(prev + x), zero);
             d = _mm_unpacklo_epi8(load4(scan + x), zero);
-            d = nearest_sse2(scan, prev, zero, a, b, c, d);
+            d = nearest_sse2(a, b, c, d);
             store4(scan + x, _mm_packus_epi16(d, d));
         }
     }
@@ -461,53 +479,388 @@ namespace
     // NEON Filters
     // -----------------------------------------------------------------------------------
 
-    /*
+    // helper functions
+
+    static inline
+    uint8x16_t load12(const u8* ptr)
+    {
+        // NOTE: 4 byte overflow guarded by PNG_SIMD_PADDING
+        return vld1q_u8(ptr);
+    }
+
+    static inline
+    void store12(u8* dest, uint8x8_t v0, uint8x8_t v1)
+    {
+        vst1_u8(dest, v0);
+        vst1_lane_u32(reinterpret_cast<u32 *>(dest + 8), vreinterpret_u32_u8(v1), 0);
+    }
+
+    static inline
+    uint8x16_t splat(uint8x16_t v)
+    {
+#ifdef __aarch64__
+        return vreinterpretq_u8_u32(vdupq_laneq_u32(vreinterpretq_u32_u8(v), 3));
+#else
+        return vreinterpretq_u8_u32(vdupq_n_u32(vgetq_lane_u32(vreinterpretq_u32_u8(v), 3)));
+#endif
+    }
+
+    static inline
+    void sub12(u8* scan, uint8x8_t& last)
+    {
+        uint8x16_t a = load12(scan);
+        uint8x8_t a0 = vget_low_u8(a);
+        uint8x8_t a1 = vget_high_u8(a);
+
+        uint8x8_t s0 = a0;
+        uint8x8_t s1 = vext_u8(a0, a1, 3);
+        uint8x8_t s2 = vext_u8(a0, a1, 6);
+        uint8x8_t s3 = vext_u8(a1, a1, 1);
+
+        uint8x8_t v0 = vadd_u8(last, s0);
+        uint8x8_t v1 = vadd_u8(v0, s1);
+        uint8x8_t v2 = vadd_u8(v1, s2);
+        uint8x8_t v3 = vadd_u8(v2, s3);
+
+        last = v3;
+
+        const uint8x8x4_t table =
+        {
+            v0, v1, v2, v3
+        };
+
+        const uint8x8_t idx0 = { 0, 1, 2, 8, 9, 10, 16, 17 };
+        const uint8x8_t idx1 = { 18, 24, 25, 26, 255, 255, 255, 255 };
+
+        a0 = vtbl4_u8(table, idx0);
+        a1 = vtbl4_u8(table, idx1);
+
+        store12(scan, a0, a1);
+    }
+
+    static inline
+    void sub16(u8* scan, uint8x16_t& last)
+    {
+        const uint8x16_t zero = vdupq_n_u8(0);
+
+        uint8x16_t a = vld1q_u8(scan);
+
+        uint8x16_t d = vaddq_u8(a, last);
+        d = vaddq_u8(d, vextq_u8(zero, a, 12));
+        d = vaddq_u8(d, vextq_u8(zero, a, 8));
+        d = vaddq_u8(d, vextq_u8(zero, a, 4));
+
+        last = splat(d);
+
+        vst1q_u8(scan, d);
+    }
+
+    static inline
+    uint8x8_t average(uint8x8_t v, uint8x8_t a, uint8x8_t b)
+    {
+        return vadd_u8(vhadd_u8(v, b), a);
+    }
+
+    static inline
+    void average12(u8* scan, const u8* prev, uint8x8_t& last)
+    {
+        // NOTE: 4 byte overflow guarded by PNG_SIMD_PADDING
+        uint8x16_t a = vld1q_u8(scan);
+        uint8x16_t b = vld1q_u8(prev);
+
+        uint8x8_t a0 = vget_low_u8(a);
+        uint8x8_t b0 = vget_low_u8(b);
+        uint8x8_t b1 = vget_high_u8(b);
+        uint8x8_t a1 = vget_high_u8(a);
+
+        uint8x8_t s1 = vext_u8(a1, a1, 1);
+        uint8x8_t t1 = vext_u8(b1, b1, 1);
+        uint8x8_t a3 = vext_u8(a0, a1, 3);
+        uint8x8_t b3 = vext_u8(b0, b1, 3);
+        uint8x8_t a6 = vext_u8(a0, a1, 6);
+        uint8x8_t b6 = vext_u8(b0, b1, 6);
+
+        uint8x8x4_t value;
+        value.val[0] = average(        last, a0, b0);
+        value.val[1] = average(value.val[0], a3, b3);
+        value.val[2] = average(value.val[1], a6, b6);
+        value.val[3] = average(value.val[2], s1, t1);
+
+        last = value.val[3];
+
+        const uint8x8_t idx0 = { 0, 1, 2, 8, 9, 10, 16, 17 };
+        const uint8x8_t idx1 = { 18, 24, 25, 26, 255, 255, 255, 255 };
+
+        uint8x8_t v0 = vtbl4_u8(value, idx0);
+        uint8x8_t v1 = vtbl4_u8(value, idx1);
+
+        store12(scan, v0, v1);
+    }
+
+    static inline
+    void average16(u8* scan, const u8* prev, uint8x8_t& last)
+    {
+        uint32x2x4_t tmp;
+
+        tmp = vld4_lane_u32(reinterpret_cast<u32 *>(scan), tmp, 0);
+        uint8x8x4_t a = *(uint8x8x4_t *) &tmp; // !!!
+
+        tmp = vld4_lane_u32(reinterpret_cast<const u32 *>(prev), tmp, 0);
+        uint8x8x4_t b = *(uint8x8x4_t *) &tmp; // !!!
+
+        uint8x8x4_t value;
+        value.val[0] = average(        last, a.val[0], b.val[0]);
+        value.val[1] = average(value.val[0], a.val[1], b.val[1]);
+        value.val[2] = average(value.val[1], a.val[2], b.val[2]);
+        value.val[3] = average(value.val[2], a.val[3], b.val[3]);
+
+        last = value.val[3];
+
+        const uint8x8_t idx0 = { 0, 1, 2, 3, 8, 9, 10, 11 };
+        const uint8x8_t idx1 = { 16, 17, 18, 19, 24, 25, 26, 27 };
+
+        uint8x8_t v0 = vtbl4_u8(value, idx0);
+        uint8x8_t v1 = vtbl4_u8(value, idx1);
+        vst1q_u8(scan, vcombine_u8(v0, v1));
+    }
+
+    static inline
+    uint8x8_t paeth(uint8x8_t a, uint8x8_t b, uint8x8_t c, uint8x8_t delta)
+    {
+        uint16x8_t pa = vabdl_u8(b, c);
+        uint16x8_t pb = vabdl_u8(a, c);
+        uint16x8_t pc = vabdq_u16(vaddl_u8(a, b), vaddl_u8(c, c));
+
+        uint16x8_t ab = vcleq_u16(pa, pb);
+        uint16x8_t ac = vcleq_u16(pa, pc);
+        uint16x8_t bc = vcleq_u16(pb, pc);
+
+        uint16x8_t abc = vandq_u16(ab, ac);
+
+        uint8x8_t d = vmovn_u16(bc);
+        uint8x8_t e = vmovn_u16(abc);
+
+        d = vbsl_u8(d, b, c);
+        e = vbsl_u8(e, a, d);
+
+        e = vadd_u8(e, delta);
+
+        return e;
+    }
+
+    static inline
+    void paeth12(u8* scan, const u8* prev, uint8x8x4_t& value, uint8x8_t& last)
+    {
+        // NOTE: 4 byte overflow guarded by PNG_SIMD_PADDING
+        uint8x8x2_t a = vld1_u8_x2(scan);
+        uint8x8x2_t b = vld1_u8_x2(prev);
+
+        uint8x8_t a0 = a.val[0];
+        uint8x8_t b0 = b.val[0];
+        uint8x8_t a1 = vext_u8(a.val[1], a.val[1], 1);
+        uint8x8_t b1 = vext_u8(b.val[1], b.val[1], 1);
+        uint8x8_t a3 = vext_u8(a.val[0], a.val[1], 3);
+        uint8x8_t b3 = vext_u8(b.val[0], b.val[1], 3);
+        uint8x8_t a6 = vext_u8(a.val[0], a.val[1], 6);
+        uint8x8_t b6 = vext_u8(b.val[0], b.val[1], 6);
+
+        value.val[0] = paeth(value.val[3], b0, last, a0);
+        value.val[1] = paeth(value.val[0], b3, b0, a3);
+        value.val[2] = paeth(value.val[1], b6, b3, a6);
+        value.val[3] = paeth(value.val[2], b1, b6, a1);
+
+        last = b1;
+
+        const uint8x8_t idx0 = { 0, 1, 2, 8, 9, 10, 16, 17 };
+        const uint8x8_t idx1 = { 18, 24, 25, 26, 255, 255, 255, 255 };
+
+        uint8x8_t v0 = vtbl4_u8(value, idx0);
+        uint8x8_t v1 = vtbl4_u8(value, idx1);
+
+        store12(scan, v0, v1);
+    }
+
+    static inline
+    void paeth16(u8* scan, const u8* prev, uint8x8x4_t& value, uint8x8_t& last)
+    {
+        uint32x2x4_t tmp;
+
+        tmp = vld4_lane_u32(reinterpret_cast<u32 *>(scan), tmp, 0);
+        uint8x8x4_t a = *(uint8x8x4_t*) &tmp; // !!!
+
+        tmp = vld4_lane_u32(reinterpret_cast<const u32 *>(prev), tmp, 0);
+        uint8x8x4_t b = *(uint8x8x4_t *) &tmp; // !!!
+
+        value.val[0] = paeth(value.val[3], b.val[0],     last, a.val[0]);
+        value.val[1] = paeth(value.val[0], b.val[1], b.val[0], a.val[1]);
+        value.val[2] = paeth(value.val[1], b.val[2], b.val[1], a.val[2]);
+        value.val[3] = paeth(value.val[2], b.val[3], b.val[2], a.val[3]);
+
+        last = b.val[3];
+
+        const uint8x8_t idx0 = { 0, 1, 2, 3, 8, 9, 10, 11 };
+        const uint8x8_t idx1 = { 16, 17, 18, 19, 24, 25, 26, 27 };
+
+        uint8x8_t v0 = vtbl4_u8(value, idx0);
+        uint8x8_t v1 = vtbl4_u8(value, idx1);
+        vst1q_u8(scan, vcombine_u8(v0, v1));
+    }
+
+    // filters
+
     void filter1_sub_24bit_neon(u8* scan, const u8* prev, int bytes, int bpp)
     {
-        MANGO_UNREFERENCED(prev);
-        MANGO_UNREFERENCED(bpp);
+        uint8x8_t last = vdup_n_u8(0);
+
+        while (bytes >= 12)
+        {
+            sub12(scan, last);
+            scan += 12;
+            bytes -= 12;
+        }
+
+        if (bytes > 0)
+        {
+            u8 temp[16];
+            std::memcpy(temp, scan, bytes);
+
+            sub12(temp, last);
+            std::memcpy(scan, temp, bytes);
+        }
     }
 
     void filter1_sub_32bit_neon(u8* scan, const u8* prev, int bytes, int bpp)
     {
-        MANGO_UNREFERENCED(prev);
-        MANGO_UNREFERENCED(bpp);
-    }
-    */
+        uint8x16_t last = vdupq_n_u8(0);
 
-    void filter2_up_neon(u8* scan, const u8* prev, int bytes, int bpp)
-    {
-        MANGO_UNREFERENCED(bpp);
-
-        for (int x = 0; x < bytes; x += 16)
+        while (bytes >= 16)
         {
-            uint8x16_t a = vld1q_u8(scan + x);
-            uint8x16_t b = vld1q_u8(prev + x);
-            vst1q_u8(scan + x, vaddq_u8(a, b));
+            sub16(scan, last);
+            scan += 16;
+            bytes -= 16;
+        }
+
+        if (bytes > 0)
+        {
+            u8 temp[16];
+            std::memcpy(temp, scan, bytes);
+
+            sub16(temp, last);
+            std::memcpy(scan, temp, bytes);
         }
     }
 
-    /*
+    void filter2_up_neon(u8* scan, const u8* prev, int bytes, int bpp)
+    {
+        while (bytes >= 16)
+        {
+            uint8x16_t a = vld1q_u8(scan);
+            uint8x16_t b = vld1q_u8(prev);
+            vst1q_u8(scan, vaddq_u8(a, b));
+            scan += 16;
+            prev += 16;
+            bytes -= 16;
+        }
+
+        for (int x = 0; x < bytes; ++x)
+        {
+            scan[x] += prev[x];
+        }
+    }
+
     void filter3_average_24bit_neon(u8* scan, const u8* prev, int bytes, int bpp)
     {
-        MANGO_UNREFERENCED(bpp);
+        uint8x8_t last = vdup_n_u8(0);
+
+        while (bytes >= 12)
+        {
+            average12(scan, prev, last);
+            scan += 12;
+            prev += 12;
+            bytes -= 12;
+        }
+
+        if (bytes > 0)
+        {
+            u8 temp[16];
+            std::memcpy(temp, scan, bytes);
+
+            average16(temp, prev, last);
+            std::memcpy(scan, temp, bytes);
+        }
     }
 
     void filter3_average_32bit_neon(u8* scan, const u8* prev, int bytes, int bpp)
     {
-        MANGO_UNREFERENCED(bpp);
+        uint8x8_t last = vdup_n_u8(0);
+
+        while (bytes >= 16)
+        {
+            average16(scan, prev, last);
+            scan += 16;
+            prev += 16;
+            bytes -= 16;
+        }
+
+        if (bytes > 0)
+        {
+            u8 temp[16];
+            std::memcpy(temp, scan, bytes);
+
+            average16(temp, prev, last);
+            std::memcpy(scan, temp, bytes);
+        }
     }
 
     void filter4_paeth_24bit_neon(u8* scan, const u8* prev, int bytes, int bpp)
     {
-        MANGO_UNREFERENCED(bpp);
+        uint8x8_t last = vdup_n_u8(0);
+
+        uint8x8x4_t value;
+        value.val[3] = vdup_n_u8(0);
+
+        while (bytes >= 12)
+        {
+            paeth12(scan, prev, value, last);
+            scan += 12;
+            prev += 12;
+            bytes -= 12;
+        }
+
+        if (bytes > 0)
+        {
+            u8 temp[16];
+            std::memcpy(temp, scan, bytes);
+
+            paeth12(temp, prev, value, last);
+            std::memcpy(scan, temp, bytes);
+        }
     }
 
     void filter4_paeth_32bit_neon(u8* scan, const u8* prev, int bytes, int bpp)
     {
-        MANGO_UNREFERENCED(bpp);
+        uint8x8_t last = vdup_n_u8(0);
+
+        uint8x8x4_t value;
+        value.val[3] = vdup_n_u8(0);
+
+        while (bytes >= 16)
+        {
+            paeth16(scan, prev, value, last);
+            scan += 16;
+            prev += 16;
+            bytes -= 16;
+        }
+
+        if (bytes > 0)
+        {
+            u8 temp[16];
+            std::memcpy(temp, scan, bytes);
+
+            paeth16(temp, prev, value, last);
+            std::memcpy(scan, temp, bytes);
+        }
     }
-    */
 
 #endif // MANGO_ENABLE_NEON
 
@@ -542,6 +895,12 @@ namespace
                     }
 #endif
 #if defined(MANGO_ENABLE_NEON)
+                    if (features & ARM_NEON)
+                    {
+                        sub = filter1_sub_24bit_neon;
+                        average = filter3_average_24bit_neon;
+                        paeth = filter4_paeth_24bit_neon;
+                    }
 #endif
                     break;
                 case 4:
@@ -551,6 +910,12 @@ namespace
                     paeth = filter4_paeth_32bit_sse2;
 #endif
 #if defined(MANGO_ENABLE_NEON)
+                    if (features & ARM_NEON)
+                    {
+                        sub = filter1_sub_32bit_neon;
+                        average = filter3_average_32bit_neon;
+                        paeth = filter4_paeth_32bit_neon;
+                    }
 #endif
                     break;
             }
@@ -568,7 +933,7 @@ namespace
             MANGO_UNREFERENCED(features);
         }
 
-        void operator () (u8* scan, const u8* prev, int bytes)
+        void operator () (u8* scan, const u8* prev, int bytes) const
         {
             FilterType method = FilterType(scan[0]);
             //printf("%d", method);
@@ -616,9 +981,9 @@ namespace
         // tRNS
         bool transparent_enable = false;
         u16 transparent_sample[3];
-        ColorRGBA transparent_color;
+        Color transparent_color;
 
-        ColorBGRA* palette = nullptr;
+        Color* palette = nullptr;
     };
 
     void process_pal1to4_indx(const ColorState& state, int width, u8* dst, const u8* src)
@@ -649,7 +1014,7 @@ namespace
 
         u32* dest = reinterpret_cast<u32*>(dst);
 
-        ColorBGRA* palette = state.palette;
+        Color* palette = state.palette;
 
         const int bits = state.bits;
         const u32 mask = (1 << bits) - 1;
@@ -682,7 +1047,7 @@ namespace
     {
         u32* dest = reinterpret_cast<u32*>(dst);
 
-        ColorBGRA* palette = state.palette;
+        Color* palette = state.palette;
 
         for (int x = 0; x < width; ++x)
         {
@@ -805,15 +1170,16 @@ namespace
 
     void process_rgb8(const ColorState& state, int width, u8* dst, const u8* src)
     {
+        // SIMD: SSSE3, NEON
         MANGO_UNREFERENCED(state);
 
         u32* dest = reinterpret_cast<u32*>(dst);
 
         while (width >= 4)
         {
-            u32 v0 = uload32(src + 0); // r1 b0 g0 r0
-            u32 v1 = uload32(src + 4); // g2 r2 b1 g1
-            u32 v2 = uload32(src + 8); // b3 g3 r3 b2
+            u32 v0 = uload32(src + 0); // R0, G0, B0, R1
+            u32 v1 = uload32(src + 4); // G1, B1, R2, G2
+            u32 v2 = uload32(src + 8); // B2, R3, G3, B3
             dest[0] = 0xff000000 | v0;
             dest[1] = 0xff000000 | (v0 >> 24) | (v1 << 8);
             dest[2] = 0xff000000 | (v1 >> 16) | (v2 << 16);
@@ -825,7 +1191,7 @@ namespace
 
         for (int x = 0; x < width; ++x)
         {
-            dest[x] = ColorRGBA(src[0], src[1], src[2], 0xff);
+            dest[x] = Color(src[0], src[1], src[2], 0xff);
             src += 3;
         }
     }
@@ -836,11 +1202,11 @@ namespace
 
         u32* dest = reinterpret_cast<u32*>(dst);
 
-        const ColorRGBA transparent_color = state.transparent_color;
+        const Color transparent_color = state.transparent_color;
 
         for (int x = 0; x < width; ++x)
         {
-            ColorRGBA color(src[0], src[1], src[2], 0xff);
+            Color color(src[0], src[1], src[2], 0xff);
             if (color == transparent_color)
             {
                 color.a = 0;
@@ -852,6 +1218,7 @@ namespace
 
     void process_rgb16(const ColorState& state, int width, u8* dst, const u8* src)
     {
+        // SIMD: NEON
         MANGO_UNREFERENCED(state);
 
         u16* dest = reinterpret_cast<u16*>(dst);
@@ -904,6 +1271,7 @@ namespace
 
     void process_rgba16(const ColorState& state, int width, u8* dst, const u8* src)
     {
+        // SIMD: SSE2, SSSE3, NEON
         MANGO_UNREFERENCED(state);
 
         u16* dest = reinterpret_cast<u16*>(dst);
@@ -1024,12 +1392,101 @@ namespace
 
         for (int x = 0; x < width; ++x)
         {
-            dest[x] = ColorRGBA(src[0], src[1], src[2], 0xff);
+            dest[x] = Color(src[0], src[1], src[2], 0xff);
             src += 3;
         }
     }
 
 #endif // MANGO_ENABLE_SSSE3
+
+#if defined(MANGO_ENABLE_NEON)
+
+    void process_rgb8_neon(const ColorState& state, int width, u8* dest, const u8* src)
+    {
+        MANGO_UNREFERENCED(state);
+
+        while (width >= 8)
+        {
+            const uint8x8x3_t rgb = vld3_u8(src);
+            uint8x8x4_t rgba;
+            rgba.val[0] = rgb.val[0];
+            rgba.val[1] = rgb.val[1];
+            rgba.val[2] = rgb.val[2];
+            rgba.val[3] = vdup_n_u8(0xff);
+            vst4_u8(dest, rgba);
+            src += 24;
+            dest += 32;
+            width -= 8;
+        }
+
+        while (width-- > 0)
+        {
+            dest[0] = src[0];
+            dest[1] = src[1];
+            dest[2] = src[2];
+            dest[3] = 0xff;
+            src += 3;
+            dest += 4;
+        }
+    }
+
+    void process_rgb16_neon(const ColorState& state, int width, u8* dst, const u8* src)
+    {
+        MANGO_UNREFERENCED(state);
+
+        u16* dest = reinterpret_cast<u16*>(dst);
+
+        while (width >= 4)
+        {
+            const uint16x4x3_t rgb = vld3_u16(reinterpret_cast<const u16*>(src));
+            uint16x4x4_t rgba;
+            rgba.val[0] = vrev16_u8(rgb.val[0]);
+            rgba.val[1] = vrev16_u8(rgb.val[1]);
+            rgba.val[2] = vrev16_u8(rgb.val[2]);
+            rgba.val[3] = vdup_n_u16(0xffff);
+            vst4_u16(dest, rgba);
+            src += 24;
+            dest += 16;
+            width -= 4;
+        }
+
+        while (width-- > 0)
+        {
+            dest[0] = uload16be(src + 0);
+            dest[1] = uload16be(src + 2);
+            dest[2] = uload16be(src + 4);
+            dest[3] = 0xffff;
+            src += 6;
+            dest += 4;
+        }
+    }
+
+    void process_rgba16_neon(const ColorState& state, int width, u8* dst, const u8* src)
+    {
+        MANGO_UNREFERENCED(state);
+
+        const u16* source = reinterpret_cast<const u16*>(src);
+        u16* dest = reinterpret_cast<u16*>(dst);
+
+        while (width >= 2)
+        {
+            uint16x8_t a = vld1q_u16(source);
+            a = vrev16q_u8(a);
+            vst1q_u16(dest, a);
+            source += 8;
+            dest += 8;
+            width -= 2;
+        }
+
+        if (width > 0)
+        {
+            uint16x4_t a = vld1_u16(source);
+            a = vrev16_u8(a);
+            vst1_u16(dest, a);
+        }
+    }
+
+#endif // MANGO_ENABLE_NEON
 
     ColorState::Function getColorFunction(const ColorState& state, int color_type, int bit_depth)
     {
@@ -1118,6 +1575,12 @@ namespace
                         function = process_rgb8_ssse3;
                     }
 #endif
+#if defined(MANGO_ENABLE_NEON)
+                    if (features & ARM_NEON)
+                    {
+                        function = process_rgb8_neon;
+                    }
+#endif
                 }
             }
             else
@@ -1129,6 +1592,12 @@ namespace
                 else
                 {
                     function = process_rgb16;
+#if defined(MANGO_ENABLE_NEON)
+                    if (features & ARM_NEON)
+                    {
+                        function = process_rgb16_neon;
+                    }
+#endif
                 }
             }
         }
@@ -1151,6 +1620,12 @@ namespace
                 if (features & INTEL_SSSE3)
                 {
                     function = process_rgba16_ssse3;
+                }
+#endif
+#if defined(MANGO_ENABLE_NEON)
+                if (features & ARM_NEON)
+                {
+                    function = process_rgba16_neon;
                 }
 #endif
             }
@@ -1325,7 +1800,8 @@ namespace
         void deinterlace1to4(u8* output, int width, int height, size_t stride, u8* buffer);
         void deinterlace8(u8* output, int width, int height, size_t stride, u8* buffer);
         void filter(u8* buffer, int bytes, int height);
-        void process(u8* dest, int width, int height, size_t stride, u8* buffer);
+        void process_range(u8* image, u8* buffer, size_t stride, int width, const FilterDispatcher& filter, int y0, int y1);
+        void process(u8* dest, int width, int height, size_t stride, u8* buffer, bool multithread);
 
         void blend(Surface& d, Surface& s, Palette* palette);
 
@@ -1348,7 +1824,7 @@ namespace
         ~ParserPNG();
 
         const ImageHeader& getHeader();
-        ImageDecodeStatus decode(const Surface& dest, Palette* palette);
+        ImageDecodeStatus decode(const Surface& dest, bool multithread, Palette* palette);
 
         ConstMemory icc()
         {
@@ -1443,8 +1919,7 @@ namespace
                     break;
 
                 case COLOR_TYPE_PALETTE:
-                    // NOTE: palette formats decode to BGRA (same format as the palette)
-                    m_header.format = Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
+                    m_header.format = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
                     m_header.palette = true;
                     break;
 
@@ -1479,12 +1954,6 @@ namespace
         if (m_width <= 0 || m_height <= 0)
         {
             setError(makeString("Incorrect dimensions (%d x %d).", m_width, m_height));
-            return;
-        }
-
-        if (m_width > 0x8000 || m_height > 0x8000)
-        {
-            setError(makeString("Too large image (%d x %d).", m_width, m_height));
             return;
         }
 
@@ -1589,7 +2058,7 @@ namespace
         m_palette.size = size / 3;
         for (u32 i = 0; i < m_palette.size; ++i)
         {
-            m_palette[i] = ColorBGRA(p[0], p[1], p[2], 0xff);
+            m_palette[i] = Color(p[0], p[1], p[2], 0xff);
             p += 3;
         }
     }
@@ -1619,9 +2088,9 @@ namespace
             m_color_state.transparent_sample[0] = p.read16();
             m_color_state.transparent_sample[1] = p.read16();
             m_color_state.transparent_sample[2] = p.read16();
-            m_color_state.transparent_color = ColorRGBA(m_color_state.transparent_sample[0] & 0xff,
-                                                        m_color_state.transparent_sample[1] & 0xff,
-                                                        m_color_state.transparent_sample[2] & 0xff, 0xff);
+            m_color_state.transparent_color = Color(m_color_state.transparent_sample[0] & 0xff,
+                                                    m_color_state.transparent_sample[1] & 0xff,
+                                                    m_color_state.transparent_sample[2] & 0xff, 0xff);
         }
         else if (m_color_type == COLOR_TYPE_PALETTE)
         {
@@ -1754,7 +2223,7 @@ namespace
         Compressed profile: n bytes
         */
         const char* name = (const char*)&p[0];
-        size_t name_len = strnlen(name, size);
+        size_t name_len = png_strnlen(name, size);
         if(name_len == size)
         {
             debugPrint("iCCP: profile name not terminated\n");
@@ -1968,7 +2437,7 @@ namespace
         for (int x = 0; x < width; ++x)
         {
             u8 sample = src[x];
-            ColorBGRA color = m_palette[sample];
+            Color color = m_palette[sample];
             if (color.a)
             {
                 dest[x] = sample;
@@ -2133,7 +2602,7 @@ namespace
         FilterDispatcher filter(bpp);
 
         // zero scanline
-        std::vector<u8> zeros(bytes, 0);
+        Buffer zeros(bytes, 0);
         const u8* prev = zeros.data();
 
         for (int y = 0; y < height; ++y)
@@ -2144,29 +2613,51 @@ namespace
         }
     }
 
-    void ParserPNG::process(u8* image, int width, int height, size_t stride, u8* buffer)
+    void ParserPNG::process_range(u8* image, u8* buffer, size_t stride, int width, const FilterDispatcher& filter, int y0, int y1)
+    {
+        const int bytes_per_line = getBytesPerLine(width) + PNG_FILTER_BYTE;
+        ColorState::Function convert = getColorFunction(m_color_state, m_color_type, m_color_state.bits);
+
+        buffer += y0 * bytes_per_line;
+        image += y0 * stride;
+
+        for (int y = y0; y < y1; ++y)
+        {
+            // filtering
+            filter(buffer, buffer - bytes_per_line, bytes_per_line);
+
+            // color conversion
+            convert(m_color_state, width, image, buffer + PNG_FILTER_BYTE);
+
+            buffer += bytes_per_line;
+            image += stride;
+        }
+    }
+
+    void ParserPNG::process(u8* image, int width, int height, size_t stride, u8* buffer, bool multithread)
     {
         if (m_error)
         {
             return;
         }
 
-        int bytes_per_line = getBytesPerLine(width) + PNG_FILTER_BYTE;
+        const int bytes_per_line = getBytesPerLine(width) + PNG_FILTER_BYTE;
 
         ColorState::Function convert = getColorFunction(m_color_state, m_color_type, m_color_state.bits);
 
-        Buffer temp;
-
         if (m_interlace)
         {
-            temp.resize(height * bytes_per_line);
-            std::memset(temp, 0, height * bytes_per_line);
+            Buffer temp(height * bytes_per_line, 0);
 
             // deinterlace does filter for each pass
             if (m_color_state.bits < 8)
+            {
                 deinterlace1to4(temp, width, height, bytes_per_line, buffer);
+            }
             else
+            {
                 deinterlace8(temp, width, height, bytes_per_line, buffer);
+            }
 
             // use de-interlaced temp buffer as processing source
             buffer = temp;
@@ -2174,7 +2665,7 @@ namespace
             // color conversion
             for (int y = 0; y < height; ++y)
             {
-                convert(m_color_state, width, image, buffer + 1);
+                convert(m_color_state, width, image, buffer + PNG_FILTER_BYTE);
                 image += stride;
                 buffer += bytes_per_line;
             }
@@ -2187,26 +2678,42 @@ namespace
 
             FilterDispatcher filter(bpp);
 
-            // zero scanline
-            std::vector<u8> zeros(bytes_per_line, 0);
-            const u8* prev = zeros.data();
+            int y0 = 0;
 
-            for (int y = 0; y < height; ++y)
+            if (multithread)
             {
-                // filtering
-                filter(buffer, prev, bytes_per_line);
+                ConcurrentQueue q;
 
-                // color conversion
-                convert(m_color_state, width, image, buffer + PNG_FILTER_BYTE);
-                image += stride;
+                for (int y = 0; y < height; ++y)
+                {
+                    u8 f = buffer[bytes_per_line * y]; // extract filter byte
+                    if (f <= 1)
+                    {
+                        // does not use previous scanline -> may start a new range
+                        if ((y - y0) > 32)
+                        {
+                            // enqueue current range
+                            q.enqueue([=] ()
+                            {
+                                process_range(image, buffer, stride, width, filter, y0, y);
+                            });
 
-                prev = buffer;
-                buffer += bytes_per_line;
+                            // start a new range
+                            y0 = y;
+                        }
+                    }
+                    else
+                    {
+                        // uses previous scanline -> must continue current range
+                    }
+                }
             }
+
+            process_range(image, buffer, stride, width, filter, y0, height);
         }
     }
 
-    ImageDecodeStatus ParserPNG::decode(const Surface& dest, Palette* ptr_palette)
+    ImageDecodeStatus ParserPNG::decode(const Surface& dest, bool multithread, Palette* ptr_palette)
     {
         ImageDecodeStatus status;
 
@@ -2265,26 +2772,32 @@ namespace
             }
         }
 
-        int buffer_size = getImageBufferSize(width, height);
+        const int bytes_per_line = getBytesPerLine(width) + PNG_FILTER_BYTE;
+        const int buffer_size = getImageBufferSize(width, height);
 
         // allocate output buffer
-        Buffer buffer(buffer_size + PNG_SIMD_PADDING);
-        debugPrint("  buffer bytes: %d\n", buffer_size);
+        Buffer temp(bytes_per_line + buffer_size + PNG_SIMD_PADDING);
+        debugPrint("  buffer bytes:   %d\n", buffer_size);
+
+        // zero scanline for filters at the beginning
+        std::memset(temp, 0, bytes_per_line);
+
+        Memory buffer(temp + bytes_per_line, buffer_size);
 
         try
         {
-            if(m_iphoneOptimized)
+            if (m_iphoneOptimized)
             {
-                // apple uses raw deflate format
+                // Apple uses raw deflate format
                 size_t bytes_out = deflate::decompress(buffer, m_compressed);
-                debugPrint("  # deflate total_out:  %d\n", int(bytes_out));
+                debugPrint("  deflate bytes:  %d\n", int(bytes_out));
                 MANGO_UNREFERENCED(bytes_out);
             }
             else
             {
                 // png standard uses zlib frame format
                 size_t bytes_out = zlib::decompress(buffer, m_compressed);
-                debugPrint("  # zlib total_out:  %d\n", int(bytes_out));
+                debugPrint("  zlib bytes:     %d\n", int(bytes_out));
                 MANGO_UNREFERENCED(bytes_out);
             }
         }
@@ -2295,7 +2808,7 @@ namespace
         }
 
         // process image
-        process(image, width, height, stride, buffer);
+        process(image, width, height, stride, buffer, multithread);
 
         if (m_number_of_frames > 0)
         {
@@ -2419,7 +2932,7 @@ namespace
         return sum;
     }
 
-    void writeChunk(Stream& stream, u32 chunkid, Memory memory)
+    void writeChunk(Stream& stream, u32 chunkid, ConstMemory memory)
     {
         BigEndianStream s(stream);
 
@@ -2436,7 +2949,7 @@ namespace
 
     void write_IHDR(Stream& stream, const Surface& surface, u8 color_bits, ColorType color_type)
     {
-        MemoryStream buffer;
+        BufferStream buffer;
         BigEndianStream s(buffer);
 
         s.write32(surface.width);
@@ -2450,26 +2963,30 @@ namespace
         writeChunk(stream, u32_mask_rev('I', 'H', 'D', 'R'), buffer);
     }
 
-    void write_iCCP(Stream& stream, const ConstMemory& icc, int level)
+    void write_iCCP(Stream& stream, const ImageEncodeOptions& options)
     {
-        if(icc.size == 0) return; // omit empty profile chunk
+        if (options.icc.size == 0)
+        {
+            // omit empty profile chunk
+            return;
+        }
 
-        MemoryStream buffer;
+        BufferStream buffer;
         BigEndianStream s(buffer);
 
         s.write8('-'); // profile name is 1-79 char according to spec. we dont have/need name
         s.write8(0); // profile name null separator
         s.write8(0); // compression method, 0=deflate
 
-        size_t bound = zlib::bound(icc.size);
+        size_t bound = zlib::bound(options.icc.size);
         Buffer compressed(bound);
-        size_t bytes_out = zlib::compress(compressed, icc, level);
+        size_t bytes_out = zlib::compress(compressed, options.icc, options.compression);
         buffer.write(compressed, bytes_out); // rest of chunk is compressed profile
 
         writeChunk(stream, u32_mask_rev('i', 'C', 'C', 'P'), buffer);
     }
 
-    void write_IDAT(Stream& stream, const Surface& surface, int level, bool filtering)
+    void write_IDAT(Stream& stream, const Surface& surface, const ImageEncodeOptions& options)
     {
         // data to compress
         Buffer buffer;
@@ -2478,10 +2995,10 @@ namespace
         int bpp = surface.format.bytes();
         int bytes_per_scan = surface.width * bpp;
 
-        Buffer zero(bytes_per_scan, 0);
-        u8* prev = zero;
+        Buffer zeros(bytes_per_scan, 0);
+        u8* prev = zeros;
 
-        if (filtering)
+        if (options.filtering)
         {
             Buffer temp_none(bytes_per_scan + PNG_FILTER_BYTE);
             Buffer temp_sub(bytes_per_scan + PNG_FILTER_BYTE);
@@ -2497,7 +3014,7 @@ namespace
                 size_t best = ~0;
                 Buffer* best_buffer = &temp_none;
 
-                const char* s = "0"; // selected filter debug string
+                //const char* s = "0"; // selected filter debug string
 
                 size_t score;
 
@@ -2507,7 +3024,7 @@ namespace
                 {
                     best = score;
                     best_buffer = &temp_sub;
-                    s = "1";
+                    //s = "1";
                 }
 
                 temp_up[0] = FILTER_UP;
@@ -2516,7 +3033,7 @@ namespace
                 {
                     best = score;
                     best_buffer = &temp_up;
-                    s = "2";
+                    //s = "2";
                 }
 
                 temp_average[0] = FILTER_AVERAGE;
@@ -2525,7 +3042,7 @@ namespace
                 {
                     best = score;
                     best_buffer = &temp_average;
-                    s = "3";
+                    //s = "3";
                 }
 
                 temp_paeth[0] = FILTER_PAETH;
@@ -2539,7 +3056,7 @@ namespace
                 buffer.append(*best_buffer, bytes_per_scan + PNG_FILTER_BYTE);
 
                 //printf("%s", s);
-                MANGO_UNREFERENCED(s);
+                //MANGO_UNREFERENCED(s);
 
                 prev = image;
                 image += surface.stride;
@@ -2559,10 +3076,10 @@ namespace
         // compress
         size_t bound = zlib::bound(buffer.size());
         Buffer compressed(bound);
-        size_t bytes_out = zlib::compress(compressed, buffer, level);
+        size_t bytes_out = zlib::compress(compressed, buffer, options.compression);
 
         // write chunkdID + compressed data
-        writeChunk(stream, u32_mask_rev('I', 'D', 'A', 'T'), Memory(compressed, bytes_out));
+        writeChunk(stream, u32_mask_rev('I', 'D', 'A', 'T'), ConstMemory(compressed, bytes_out));
     }
 
     void writePNG(Stream& stream, const Surface& surface, u8 color_bits, ColorType color_type, const ImageEncodeOptions& options)
@@ -2573,8 +3090,8 @@ namespace
         s.write64(PNG_HEADER_MAGIC);
 
         write_IHDR(stream, surface, color_bits, color_type);
-        write_iCCP(stream, options.icc, options.compression);
-        write_IDAT(stream, surface, options.compression, options.filtering);
+        write_iCCP(stream, options);
+        write_IDAT(stream, surface, options);
 
         // write IEND
         s.write32(0);
@@ -2609,7 +3126,7 @@ namespace
             return m_parser.icc();
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* ptr_palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
             MANGO_UNREFERENCED(level);
             MANGO_UNREFERENCED(depth);
@@ -2627,26 +3144,26 @@ namespace
             bool direct = dest.format == header.format &&
                           dest.width >= header.width &&
                           dest.height >= header.height &&
-                          !ptr_palette;
+                          options.palette == nullptr;
 
             if (direct)
             {
                 // direct decoding
-                status = m_parser.decode(dest, nullptr);
+                status = m_parser.decode(dest, options.multithread, nullptr);
             }
             else
             {
-                if (ptr_palette && header.palette)
+                if (options.palette && header.palette)
                 {
                     // direct decoding with palette
-                    status = m_parser.decode(dest, ptr_palette);
+                    status = m_parser.decode(dest, options.multithread, options.palette);
                     direct = true;
                 }
                 else
                 {
                     // indirect
                     Bitmap temp(header.width, header.height, header.format);
-                    status = m_parser.decode(temp, nullptr);
+                    status = m_parser.decode(temp, options.multithread, nullptr);
                     dest.blit(0, 0, temp);
                 }
             }
@@ -2744,7 +3261,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderPNG()
@@ -2753,6 +3270,4 @@ namespace mango
         registerImageEncoder(imageEncode, ".png");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_PNG
+} // namespace mango::image

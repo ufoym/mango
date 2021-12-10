@@ -6,7 +6,7 @@
 
 #include <mango/math/vector.hpp>
 
-namespace mango
+namespace mango::math
 {
 
     template <>
@@ -89,7 +89,7 @@ namespace mango
             return m;
         }
 
-#ifdef int256_is_hardware_vector
+#ifdef simd_int256_is_hardware_vector
         operator simd::u32x8::vector () const
         {
             return m.data;
@@ -321,4 +321,4 @@ namespace mango
         return simd::srl(a, b);
     }
 
-} // namespace mango
+} // namespace mango::math

@@ -6,7 +6,7 @@
 #include <cmath>
 #include <mango/math/geometry.hpp>
 
-namespace mango
+namespace mango::math
 {
 
     // ------------------------------------------------------------------
@@ -218,7 +218,7 @@ namespace mango
     // TexTriangle
     // ------------------------------------------------------------------
 
-    float3x3 TexTriangle::tbn() const
+    Matrix3x3 TexTriangle::tbn() const
     {
         const float32x3 a = position[1] - position[0];
         const float32x3 b = position[2] - position[0];
@@ -230,7 +230,7 @@ namespace mango
 			s = 1.0f / s;
 		}
 
-        float3x3 tbn;
+        Matrix3x3 tbn;
 
         tbn[0] = normalize((a * float(d.y) - b * float(c.y)) * s); // tangent
         tbn[1] = normalize((a * float(d.x) + b * float(c.x)) * -s); // binormal
@@ -243,9 +243,9 @@ namespace mango
     // Frustum
     // ------------------------------------------------------------------
 
-    Frustum::Frustum(const float4x4& tm)
+    Frustum::Frustum(const Matrix4x4& tm)
     {
-        const float4x4 m = transpose(tm);
+        const Matrix4x4 m = transpose(tm);
 
         const float32x3 nx = float32x4(m[3] + m[0]).xyz;
         const float32x3 px = float32x4(m[3] - m[0]).xyz;
@@ -408,21 +408,21 @@ namespace mango
 
     bool IntersectRange::intersect(const FastRay& ray, const Sphere& sphere)
     {
-        float b = -2 * (ray.dotod - dot(sphere.center, ray.direction));
+        float b = -(ray.dotod - dot(sphere.center, ray.direction));
         float c = ray.dotoo + dot(sphere.center, sphere.center) - 2.0f * dot(ray.origin, sphere.center) - sphere.radius * sphere.radius;
 
-        const float det = b * b - 4 * c;
+        const float det = b * b - c;
 
         // TODO: branchless version
         if (det >= 0)
         {
             const float sd = float(std::sqrt(det));
-            t0 = (b + sd) * 0.5f;
-            t1 = (b - sd) * 0.5f;
+            t0 = b + sd;
+            t1 = b - sd;
 
             if (t0 > t1)
             {
-				std::swap(t0, t1);
+                std::swap(t0, t1);
             }
 
             return t1 > std::max(t0, 0.0f);
@@ -646,4 +646,4 @@ namespace mango
         return discr >= 0 && test >= 0;
     }
 
-} // namespace mango
+} // namespace mango::math

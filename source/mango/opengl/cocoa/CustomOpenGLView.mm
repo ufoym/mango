@@ -2,6 +2,8 @@
     MANGO Multimedia Development Platform
     Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
+#if !defined(__ppc__)
+
 #include "CustomOpenGLView.h"
 
 namespace
@@ -388,6 +390,12 @@ namespace
     [self dispatchMouseClick:event andMouseButton:button andClickCount:0];
 }
 
+- (void)scrollWheel:(NSEvent *)event
+{
+    [super scrollWheel:event];
+    [self dispatchMouseClick:event andMouseButton:MOUSEBUTTON_WHEEL andClickCount:[event deltaY] * 10.0];
+}
+
 - (void) mouseEntered:(NSEvent *)event
 {
 }
@@ -471,3 +479,5 @@ namespace
 }
 
 @end
+
+#endif

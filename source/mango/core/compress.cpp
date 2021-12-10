@@ -13,17 +13,13 @@
 #include <mango/core/pointer.hpp>
 #include <mango/math/math.hpp>
 
-#ifdef MANGO_ENABLE_LICENSE_BSD
 #include "../../external/lz4/lz4.h"
 #include "../../external/lz4/lz4hc.h"
 #include "../../external/lzo/minilzo.h"
 #include "../../external/zstd/zstd.h"
-#endif
 
-#ifdef MANGO_ENABLE_LICENSE_ZLIB
 #include "../../external/bzip2/bzlib.h"
 #include "../../external/lzfse/lzfse.h"
-#endif
 
 #include "../../external/lzma/Alloc.h"
 #include "../../external/lzma/LzmaDec.h"
@@ -34,13 +30,15 @@
 
 #include "../../external/libdeflate/libdeflate.h"
 
-namespace mango {
+namespace mango
+{
 
 // ----------------------------------------------------------------------------
 // nocompress
 // ----------------------------------------------------------------------------
 
-namespace nocompress {
+namespace nocompress
+{
 
     size_t bound(size_t size)
     {
@@ -62,13 +60,12 @@ namespace nocompress {
 
 } // namespace nocompress
 
-#ifdef MANGO_ENABLE_LICENSE_BSD
-
 // ----------------------------------------------------------------------------
 // lz4
 // ----------------------------------------------------------------------------
 
-namespace lz4 {
+namespace lz4
+{
 
     size_t bound(size_t size)
     {
@@ -83,7 +80,7 @@ namespace lz4 {
 
         size_t written = 0;
 
-        level = clamp(level, 0, 10);
+        level = math::clamp(level, 0, 10);
 
         if (level > 6)
         {
@@ -229,16 +226,14 @@ namespace lz4 {
         }
     };
 
-    SharedObject<StreamEncoder> createStreamEncoder(int level)
+    std::shared_ptr<StreamEncoder> createStreamEncoder(int level)
     {
-        StreamEncoder* encoder = new StreamEncoderLZ4(level);
-        return encoder;
+        return std::make_shared<StreamEncoderLZ4>(level);
     }
 
-    SharedObject<StreamDecoder> createStreamDecoder()
+    std::shared_ptr<StreamDecoder> createStreamDecoder()
     {
-        StreamDecoder* decoder = new StreamDecoderLZ4();
-        return decoder;
+        return std::make_shared<StreamDecoderLZ4>();
     }
 
 } // namespace lz4
@@ -247,7 +242,8 @@ namespace lz4 {
 // lzo
 // ----------------------------------------------------------------------------
 
-namespace lzo {
+namespace lzo
+{
 
     size_t bound(size_t size)
     {
@@ -292,7 +288,8 @@ namespace lzo {
 // zstd
 // ----------------------------------------------------------------------------
 
-namespace zstd {
+namespace zstd
+{
 
     size_t bound(size_t size)
     {
@@ -307,7 +304,7 @@ namespace zstd {
         if (!source.size)
             return 0;
 
-        level = clamp(level * 2, 1, 20);
+        level = math::clamp(level * 2, 1, 20);
 
         const size_t x = ZSTD_compress(dest.address, dest.size,
                                        source.address, source.size, level);
@@ -341,7 +338,7 @@ namespace zstd {
     public:
         StreamEncoderZSTD(int level)
         {
-            level = clamp(level * 2, 1, 20);
+            level = math::clamp(level * 2, 1, 20);
             z = ZSTD_createCStream();
             ZSTD_initCStream(z, level);
         }
@@ -423,29 +420,24 @@ namespace zstd {
         }
     };
 
-    SharedObject<StreamEncoder> createStreamEncoder(int level)
+    std::shared_ptr<StreamEncoder> createStreamEncoder(int level)
     {
-        StreamEncoder* encoder = new StreamEncoderZSTD(level);
-        return encoder;
+        return std::make_shared<StreamEncoderZSTD>(level);
     }
 
-    SharedObject<StreamDecoder> createStreamDecoder()
+    std::shared_ptr<StreamDecoder> createStreamDecoder()
     {
-        StreamDecoder* decoder = new StreamDecoderZSTD();
-        return decoder;
+        return std::make_shared<StreamDecoderZSTD>();
     }
 
 } // namespace zstd
-
-#endif // MANGO_ENABLE_LICENSE_BSD
-
-#ifdef MANGO_ENABLE_LICENSE_ZLIB
 
 // ----------------------------------------------------------------------------
 // bzip2
 // ----------------------------------------------------------------------------
 
-namespace bzip2 {
+namespace bzip2
+{
 
     size_t bound(size_t size)
     {
@@ -454,7 +446,7 @@ namespace bzip2 {
 
     size_t compress(Memory dest, ConstMemory source, int level)
     {
-        const int blockSize100k = clamp(level, 1, 9);
+        const int blockSize100k = math::clamp(level, 1, 9);
 
         const int verbosity = 0;
         const int workFactor = 30;
@@ -537,7 +529,8 @@ namespace bzip2 {
 // lzfse
 // ----------------------------------------------------------------------------
 
-namespace lzfse {
+namespace lzfse
+{
 
     size_t bound(size_t size)
     {
@@ -564,8 +557,6 @@ namespace lzfse {
     }
 
 } // namespace lzfse
-
-#endif // MANGO_ENABLE_LICENSE_ZLIB
 
 // ----------------------------------------------------------------------------
 // lzma
@@ -603,7 +594,7 @@ namespace lzma
         CLzmaEncProps props;
         LzmaEncProps_Init(&props);
 
-        level = clamp(level - 1, 0, 9);
+        level = math::clamp(level - 1, 0, 9);
 
         props.level = level; // [0, 9] (default: 5)
         props.dictSize = 2048 << level; // use (1 << N) or (3 << N). 4 KB < dictSize <= 128 MB
@@ -682,7 +673,7 @@ namespace lzma2
         Lzma2EncProps_Init(&props);
         Lzma2EncProps_Normalize(&props);
 
-        level = clamp(level, 0, 10);
+        level = math::clamp(level, 0, 10);
 
         CLzma2EncHandle encoder = Lzma2Enc_Create(&g_Alloc, &g_Alloc);
 
@@ -805,7 +796,7 @@ namespace ppmd8
     {
         u8* start = dest.address;
 
-        level = clamp(level, 0, 10);
+        level = math::clamp(level, 0, 10);
 
         // encoding parameters
         u16 opt_order = level + 2; // 2..16
@@ -890,7 +881,8 @@ namespace ppmd8
 // deflate
 // ----------------------------------------------------------------------------
 
-namespace deflate {
+namespace deflate
+{
 
     const char* get_error_string(libdeflate_result result)
     {
@@ -920,7 +912,7 @@ namespace deflate {
 
     size_t compress(Memory dest, ConstMemory source, int level)
     {
-        level = clamp(level, 1, 10);
+        level = math::clamp(level, 1, 10);
         if (level >= 8) level = (level * 12) / 10;
 
         libdeflate_compressor* compressor = libdeflate_alloc_compressor(level);
@@ -953,7 +945,8 @@ namespace deflate {
 // zlib
 // ----------------------------------------------------------------------------
 
-namespace zlib {
+namespace zlib
+{
 
     size_t bound(size_t size)
     {
@@ -962,7 +955,7 @@ namespace zlib {
 
     size_t compress(Memory dest, ConstMemory source, int level)
     {
-        level = clamp(level, 1, 10);
+        level = math::clamp(level, 1, 10);
         if (level >= 8) level = (level * 12) / 10;
 
         libdeflate_compressor* compressor = libdeflate_alloc_compressor(level);
@@ -995,7 +988,8 @@ namespace zlib {
 // gzip
 // ----------------------------------------------------------------------------
 
-namespace gzip {
+namespace gzip
+{
 
     size_t bound(size_t size)
     {
@@ -1004,7 +998,7 @@ namespace gzip {
 
     size_t compress(Memory dest, ConstMemory source, int level)
     {
-        level = clamp(level, 1, 10);
+        level = math::clamp(level, 1, 10);
         if (level >= 8) level = (level * 12) / 10;
 
         libdeflate_compressor* compressor = libdeflate_alloc_compressor(level);
@@ -1076,6 +1070,7 @@ namespace gzip {
         {
             MANGO_EXCEPTION("[WARNING] Incorrect compressor (%s).", name.c_str());
         }
+
         return compressor;
     }
 

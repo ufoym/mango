@@ -1,15 +1,17 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/mango.hpp>
 
 using namespace mango;
 using namespace mango::filesystem;
+using namespace mango::image;
 
 #define TEST_LIBJPEG
 #define TEST_STB
 #define TEST_JPEG_COMPRESSOR
+//#define TEST_JPEGDEC
 
 // ----------------------------------------------------------------------
 // warmup()
@@ -36,22 +38,22 @@ void warmup(const char* filename)
 
 Surface load_jpeg(const char* filename)
 {
-    FILE *file = fopen(filename, "rb" );
-    if ( file == NULL )
+    FILE* file = fopen(filename, "rb" );
+    if (!file)
     {
-        return Surface(0, 0, Format(), 0, NULL);
+        return Surface();
     }
 
-    struct jpeg_decompress_struct info; //for our jpeg info
-    struct jpeg_error_mgr err; //the error handler
+    struct jpeg_decompress_struct info;
+    struct jpeg_error_mgr err;
 
-    info.err = jpeg_std_error( &err );
-    jpeg_create_decompress( &info ); //fills info structure
+    info.err = jpeg_std_error(&err);
+    jpeg_create_decompress(&info);
 
-    jpeg_stdio_src( &info, file );
-    jpeg_read_header( &info, TRUE );
+    jpeg_stdio_src(&info, file);
+    jpeg_read_header(&info, TRUE);
 
-    jpeg_start_decompress( &info );
+    jpeg_start_decompress(&info);
 
     int w = info.output_width;
     int h = info.output_height;
@@ -67,15 +69,14 @@ Surface load_jpeg(const char* filename)
         jpeg_read_scanlines( &info, rowptr, 1 );
     }
 
-    jpeg_finish_decompress( &info );
+    jpeg_finish_decompress(&info);
 
-    fclose( file );
+    fclose(file);
 
     Format format = Format(24, Format::UNORM, Format::RGB, 8, 8, 9);
     if (numChannels == 4)
         format = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
 
-    // TODO: free data, format depends on numChannels
     return Surface(w, h, format, w * numChannels, data);
 }
 
@@ -173,6 +174,67 @@ Surface jpgd_load(const char* filename)
 void jpge_save(const char* filename, const Surface& surface)
 {
     jpge::compress_image_to_jpeg_file(filename, surface.width, surface.height, 4, surface.image);
+    free(surface.image);
+}
+
+#endif
+
+// ----------------------------------------------------------------------
+// jpegdec
+// ----------------------------------------------------------------------
+
+#ifdef TEST_JPEGDEC
+
+#include "jpegdec/JPEGDEC.h"
+
+Bitmap* jpegdec_bitmap = nullptr;
+
+int jpegdec_draw(JPEGDRAW *draw)
+{
+    u16* src = draw->pPixels;
+    u8* dest = jpegdec_bitmap->address(draw->x, draw->y);
+    size_t stride = jpegdec_bitmap->stride;
+
+    for (int y = 0; y < draw->iHeight; ++y)
+    {
+        std::memcpy(dest, src, draw->iWidth * 2);
+        src += draw->iWidth;
+        dest += stride;
+    }
+
+    return 1;
+}
+
+Surface jpegdec_load(const char* filename)
+{
+    File file(filename);
+
+    JPEGDEC decoder;
+
+    if (!decoder.openRAM(const_cast<u8*>(file.data()), int(file.size()), jpegdec_draw))
+    {
+        printf("JPEGDEC::openRAM() failed.\n");
+        return Surface();
+    }
+
+    int width = decoder.getWidth();
+    int height = decoder.getHeight();
+    Bitmap bitmap(width, height, Format(16, Format::UNORM, Format::BGR, 5, 6, 5, 0));
+
+    jpegdec_bitmap = &bitmap;
+
+    if (!decoder.decode(0, 0, 0))
+    {
+        printf("JPEGDEC::decode() failed.\n");
+        return Surface();
+    }
+
+    return Surface();
+}
+
+void jpegdec_save(const char* filename, const Surface& surface)
+{
+    // NOT SUPPORTED
 }
 
 #endif
@@ -201,13 +263,28 @@ int main(int argc, const char* argv[])
         exit(1);
     }
 
+    printf("%s\n", getSystemInfo().c_str());
+
     const char* filename = argv[1];
     warmup(filename);
 
     int test_count = 0;
-    if (argc == 3)
+    bool multithread = true;
+
+    for (int i = 2; i < argc; ++i)
     {
-        test_count = std::atoi(argv[2]);
+        if (!strcmp(argv[i], "--nomt"))
+        {
+            multithread = false;
+        }
+        else if (!strcmp(argv[i], "--debug"))
+        {
+            debugPrintEnable(true);
+        }
+        else
+        {
+            test_count = std::atoi(argv[i]);
+        }
     }
 
     printf("----------------------------------------------\n");
@@ -223,11 +300,9 @@ int main(int argc, const char* argv[])
 #ifdef TEST_LIBJPEG
 
     time0 = Time::us();
-
     Surface s = load_jpeg(filename);
 
     time1 = Time::us();
-
     save_jpeg("output-libjpeg.jpg", s);
 
     time2 = Time::us();
@@ -240,11 +315,9 @@ int main(int argc, const char* argv[])
 #ifdef TEST_STB
 
     time0 = Time::us();
-
     Surface s_stb = stb_load_jpeg(filename);
 
     time1 = Time::us();
-
     stb_save_jpeg("output-stb.jpg", s_stb);
 
     time2 = Time::us();
@@ -257,11 +330,9 @@ int main(int argc, const char* argv[])
 #ifdef TEST_JPEG_COMPRESSOR
 
     time0 = Time::us();
-
     Surface s_jpgd = jpgd_load(filename);
 
     time1 = Time::us();
-
     jpge_save("output-jpge.jpg", s_jpgd);
 
     time2 = Time::us();
@@ -271,15 +342,35 @@ int main(int argc, const char* argv[])
 
     // ------------------------------------------------------------------
 
+#ifdef TEST_JPEGDEC
+
+    time0 = Time::us();
+    Surface s_jpegdec = jpegdec_load(filename);
+
+    time1 = Time::us();
+    jpegdec_save("output-jpegdec.jpg", s_jpegdec);
+
+    time2 = Time::us();
+    print("jpgdec:  ", time1 - time0, time2 - time1);
+
+#endif
+
+    // ------------------------------------------------------------------
+
     time0 = Time::us();
 
-    Bitmap bitmap(filename);
+    ImageDecodeOptions decode_options;
+    decode_options.simd = true;
+    decode_options.multithread = multithread;
+    Bitmap bitmap(filename, decode_options);
 
     time1 = Time::us();
 
-    ImageEncodeOptions options;
-    options.quality = 0.70f;
-    bitmap.save("output-mango.jpg", options);
+    ImageEncodeOptions encode_options;
+    encode_options.quality = 0.70f;
+    encode_options.simd = true;
+    encode_options.multithread = multithread;
+    bitmap.save("output-mango.jpg", encode_options);
 
     time2 = Time::us();
     print("mango:   ", time1 - time0, time2 - time1);
@@ -296,10 +387,10 @@ int main(int argc, const char* argv[])
         for (int i = 0; i < test_count; ++i)
         {
             time0 = Time::us();
-            Bitmap bitmap(filename);
+            Bitmap bitmap(filename, decode_options);
 
             time1 = Time::us();
-            bitmap.save("output-mango.jpg", options);
+            bitmap.save("output-mango.jpg", encode_options);
 
             time2 = Time::us();
 

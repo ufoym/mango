@@ -7,7 +7,7 @@
 #include <mango/math/vector.hpp>
 #include <mango/math/vector_float32x8.hpp>
 
-namespace mango
+namespace mango::math
 {
 
     template <>
@@ -96,7 +96,7 @@ namespace mango
             return m;
         }
 
-#ifdef float512_is_hardware_vector
+#ifdef simd_float512_is_hardware_vector
         operator simd::f32x16::vector () const
         {
             return m.data;
@@ -441,4 +441,4 @@ namespace mango
         return simd::select(mask, a, b);
     }
 
-} // namespace mango
+} // namespace mango::math

@@ -1,18 +1,23 @@
 # ---------------------------------------------------------------------------
 # mango meson.build
 #
-# Copyright (C) 2012-2020 Twilight 3D Finland Oy Ltd.
+# Copyright (C) 2012-2021 Twilight 3D Finland Oy Ltd.
 # ---------------------------------------------------------------------------
 
 project(
     'mango', 'c', 'cpp',
-
+    meson_version: '>= 0.48.0',
     default_options : [
         'c_std=c11',
-        'cpp_std=c++14',
+        'cpp_std=c++17',
+        'objcpp_args=-std=c++17 -Wno-deprecated',
         'default_library=static'
     ]
 )
+
+if host_machine.system() == 'darwin'
+    add_languages('objcpp')
+endif
 
 enable_fast_math = get_option('enable_fast_math')
 enable_sse2      = get_option('enable_sse2')
@@ -26,27 +31,14 @@ enable_bmi       = get_option('enable_bmi')
 enable_bmi2      = get_option('enable_bmi2')
 enable_fma       = get_option('enable_fma')
 
+is_arm = host_machine.cpu_family() == 'arm' or host_machine.cpu_family() == 'aarch64'
+is_x86 = host_machine.cpu_family() == 'x86' or host_machine.cpu_family() == 'x86_64'
+
+is_windows = host_machine.system() == 'windows'
+is_darwin = host_machine.system() == 'darwin'
+
 mango_public_cpp_args = []
 mango_interface_cpp_args = []
-
-mango_all_archive_formats = [ 'ZIP', 'RAR', 'MGX' ]
-foreach archive_format : mango_all_archive_formats
-    if get_option('mango_disable_archive_@0@'.format(archive_format))
-        mango_public_cpp_args += [ '-DMANGO_DISABLE_ARCHIVE_@0@'.format(archive_format) ]
-    endif
-endforeach
-
-mango_all_image_formats = [ 'ASTC', 'ATARI', 'BMP', 'C64', 'DDS', 'GIF', 'HDR', 'IFF', 'JPG', 'KTX',
-                            'PCX', 'PKM', 'PNG', 'PNM', 'PVR', 'SGI', 'TGA', 'WEBP', 'ZPNG' ]
-foreach image_format : mango_all_image_formats
-    if get_option('mango_disable_image_@0@'.format(image_format))
-        mango_public_cpp_args += [ '-DMANGO_DISABLE_IMAGE_@0@'.format(image_format) ]
-    endif
-endforeach
-
-if get_option('mango_disable_license_gpl')
-    mango_public_cpp_args += [ '-DMANGO_DISABLE_LICENSE_GPL' ]
-endif
 
 # ------------------------------------------------------------------------------
 # source directories
@@ -69,7 +61,6 @@ mango_headers = files(
     '../include/mango/core/half.hpp',
     '../include/mango/core/hash.hpp',
     '../include/mango/core/memory.hpp',
-    '../include/mango/core/object.hpp',
     '../include/mango/core/pointer.hpp',
     '../include/mango/core/stream.hpp',
     '../include/mango/core/string.hpp',
@@ -81,7 +72,6 @@ mango_headers = files(
     '../include/mango/filesystem/filesystem.hpp',
     '../include/mango/filesystem/mapper.hpp',
     '../include/mango/filesystem/path.hpp',
-    '../include/mango/framebuffer/framebuffer.hpp',
     '../include/mango/image/blitter.hpp',
     '../include/mango/image/color.hpp',
     '../include/mango/image/compression.hpp',
@@ -96,7 +86,7 @@ mango_headers = files(
     '../include/mango/math/accessor.hpp',
     '../include/mango/math/geometry.hpp',
     '../include/mango/math/math.hpp',
-    '../include/mango/math/matrix_float4x4.hpp',
+    '../include/mango/math/matrix4x4.hpp',
     '../include/mango/math/matrix.hpp',
     '../include/mango/math/quaternion.hpp',
     '../include/mango/math/spline.hpp',
@@ -211,10 +201,6 @@ mango_headers = files(
     '../include/mango/simd/sse2_double128.hpp',
     '../include/mango/simd/sse2_float128.hpp',
     '../include/mango/simd/sse2_int128.hpp',
-    '../include/mango/vulkan/func/vk_func.hpp',
-    '../include/mango/vulkan/khronos/vk_platform.h',
-    '../include/mango/vulkan/khronos/vulkan.h',
-    '../include/mango/vulkan/vulkan.hpp',
     '../include/mango/window/window.hpp',
 )
 
@@ -234,6 +220,17 @@ core_sources = files(
     '../source/mango/core/thread.cpp',
     '../source/mango/core/timer.cpp'
 )
+
+if is_windows
+    core_sources += files(
+        '../source/mango/core/win32/dynamic_library.cpp'
+    )
+else
+    core_sources += files(
+        '../source/mango/core/unix/dynamic_library.cpp'
+    )
+endif
+
 filesystem_sources = files(
     '../source/mango/filesystem/file.cpp',
     '../source/mango/filesystem/mapper.cpp',
@@ -242,36 +239,33 @@ filesystem_sources = files(
     '../source/mango/filesystem/mapper_zip.cpp',
     '../source/mango/filesystem/path.cpp'
 )
-opengl_sources = files(
-    '../source/mango/opengl/opengl.cpp'
-)
-if host_machine.system() == 'windows'
-    core_sources += files(
-        '../source/mango/core/win32/dynamic_library.cpp'
-    )
+
+if is_windows
     filesystem_sources += files(
         '../source/mango/filesystem/win32/file_observer.cpp',
         '../source/mango/filesystem/win32/file_stream.cpp',
         '../source/mango/filesystem/win32/mapper_file.cpp'
     )
+else
+    filesystem_sources += files(
+        '../source/mango/filesystem/unix/file_observer.cpp',
+        '../source/mango/filesystem/unix/file_stream.cpp',
+        '../source/mango/filesystem/unix/mapper_file.cpp'
+    )
+endif
+
+opengl_sources = files(
+    '../source/mango/opengl/opengl.cpp'
+)
+
+if is_windows
     window_sources = files(
         '../source/mango/window/win32/win32_window.cpp'
     )
     opengl_sources += files(
         '../source/mango/opengl/wgl/wgl_context.cpp'
     )
-    framebuffer_sources = files(
-        '../source/mango/framebuffer/win32/d3d9_framebuffer.cpp'
-    )
-elif host_machine.system() == 'darwin'
-    core_sources += files(
-        '../source/mango/core/unix/dynamic_library.cpp'
-    )
-    filesystem_sources += files(
-        '../source/mango/filesystem/unix/file_observer.cpp',
-        '../source/mango/filesystem/unix/file_stream.cpp',
-        '../source/mango/filesystem/unix/mapper_file.cpp'
-    )
+elif is_darwin
     window_sources = files(
         '../source/mango/window/cocoa/cocoa_window.mm'
     )
@@ -279,26 +273,12 @@ elif host_machine.system() == 'darwin'
         '../source/mango/opengl/cocoa/cocoa_context.mm',
         '../source/mango/opengl/cocoa/CustomOpenGLView.mm'
     )
-    framebuffer_sources = files(
-        '../source/mango/framebuffer/cocoa/cocoa_framebuffer.mm'
-    )
 else
-    core_sources += files(
-        '../source/mango/core/unix/dynamic_library.cpp'
-    )
-    filesystem_sources += files(
-        '../source/mango/filesystem/unix/file_observer.cpp',
-        '../source/mango/filesystem/unix/file_stream.cpp',
-        '../source/mango/filesystem/unix/mapper_file.cpp'
-    )
     window_sources = files(
         '../source/mango/window/xlib/xlib_window.cpp'
     )
     opengl_sources += files(
         '../source/mango/opengl/glx/glx_context.cpp'
-    )
-    framebuffer_sources = files(
-        '../source/mango/framebuffer/xlib/xlib_framebuffer.cpp'
     )
 endif
 
@@ -334,6 +314,7 @@ image_sources = files(
     '../source/mango/image/quantize.cpp',
     '../source/mango/image/surface.cpp'
 )
+
 jpeg_sources = files(
     '../source/mango/jpeg/jpeg_arithmetic.cpp',
     '../source/mango/jpeg/jpeg_decode.cpp',
@@ -342,13 +323,11 @@ jpeg_sources = files(
     '../source/mango/jpeg/jpeg_idct.cpp',
     '../source/mango/jpeg/jpeg_process.cpp'
 )
+
 math_sources = files(
     '../source/mango/math/geometry.cpp',
     '../source/mango/math/math.cpp',
     '../source/mango/math/simd.cpp'
-)
-vulkan_sources = files(
-    '../source/mango/vulkan/vulkan.cpp'
 )
 
 external_headers = files(
@@ -390,7 +369,6 @@ external_headers = files(
     '../source/external/zstd/common/fse.h',
     '../source/external/zstd/common/pool.h',
     '../source/external/zstd/common/xxhash.h',
-    '../source/external/zstd/common/zstd_errors.h',
     '../source/external/zstd/common/zstd_internal.h',
     '../source/external/zstd/common/bitstream.h',
     '../source/external/zstd/common/mem.h',
@@ -412,6 +390,7 @@ external_headers = files(
     '../source/external/zstd/compress/zstdmt_compress.h',
     '../source/external/zstd/compress/zstd_cwksp.h',
     '../source/external/zstd/zstd.h',
+    '../source/external/zstd/zstd_errors.h',
     '../source/external/zstd/decompress/zstd_ddict.h',
     '../source/external/zstd/decompress/zstd_decompress_block.h',
     '../source/external/zstd/decompress/zstd_decompress_internal.h',
@@ -485,46 +464,35 @@ external_headers = files(
     '../source/external/concurrentqueue/concurrentqueue.h',
     '../source/external/concurrentqueue/readerwriterqueue.h',
     '../source/external/lzma/CpuArch.h',
-    '../source/external/lzma/7zSha256.h',
-    '../source/external/lzma/7zAes.h',
     '../source/external/lzma/Bra.h',
     '../source/external/lzma/7zCrc.h',
-    '../source/external/lzma/7zSha1.h',
     '../source/external/lzma/LzmaLib.h',
-    '../source/external/lzma/XzCrc64.h',
-    '../source/external/lzma/DllSecur.h',
     '../source/external/lzma/Ppmd7.h',
     '../source/external/lzma/BwtSort.h',
     '../source/external/lzma/Precomp.h',
     '../source/external/lzma/7zTypes.h',
-    '../source/external/lzma/Xz.h',
     '../source/external/lzma/Compiler.h',
     '../source/external/lzma/LzmaDec.h',
     '../source/external/lzma/Sort.h',
     '../source/external/lzma/RotateDefs.h',
     '../source/external/lzma/Lzma2Enc.h',
     '../source/external/lzma/7zAlloc.h',
-    '../source/external/lzma/HuffEnc.h',
     '../source/external/lzma/Lzma2Dec.h',
     '../source/external/lzma/7zBuf.h',
     '../source/external/lzma/Alloc.h',
     '../source/external/lzma/Delta.h',
     '../source/external/lzma/7z.h',
     '../source/external/lzma/Bcj2.h',
-    '../source/external/lzma/XzEnc.h',
     '../source/external/lzma/Blake2.h',
     '../source/external/lzma/LzHash.h',
-    '../source/external/lzma/7zFile.h',
     '../source/external/lzma/LzFind.h',
     '../source/external/lzma/LzmaEnc.h',
-    '../source/external/lzma/Lzma86.h',
     '../source/external/lzma/Ppmd8.h',
     '../source/external/lzma/Ppmd.h',
     '../source/external/lzma/7zVersion.h'
 )
 
 external_lzma_sources = files(
-    '../source/external/lzma/7zAes.c',
     '../source/external/lzma/7zAlloc.c',
     '../source/external/lzma/7zArcIn.c',
     '../source/external/lzma/7zBuf2.c',
@@ -532,11 +500,7 @@ external_lzma_sources = files(
     '../source/external/lzma/7zCrc.c',
     '../source/external/lzma/7zCrcOpt.c',
     '../source/external/lzma/7zDec.c',
-    '../source/external/lzma/7zFile.c',
-    '../source/external/lzma/7zSha1.c',
-    '../source/external/lzma/7zSha256.c',
     '../source/external/lzma/7zStream.c',
-    '../source/external/lzma/AesOpt.c',
     '../source/external/lzma/Alloc.c',
     '../source/external/lzma/Bcj2.c',
     '../source/external/lzma/Bcj2Enc.c',
@@ -547,13 +511,9 @@ external_lzma_sources = files(
     '../source/external/lzma/BwtSort.c',
     '../source/external/lzma/CpuArch.c',
     '../source/external/lzma/Delta.c',
-    '../source/external/lzma/DllSecur.c',
-    '../source/external/lzma/HuffEnc.c',
     '../source/external/lzma/LzFind.c',
     '../source/external/lzma/Lzma2Dec.c',
     '../source/external/lzma/Lzma2Enc.c',
-    '../source/external/lzma/Lzma86Dec.c',
-    '../source/external/lzma/Lzma86Enc.c',
     '../source/external/lzma/LzmaDec.c',
     '../source/external/lzma/LzmaEnc.c',
     '../source/external/lzma/LzmaLib.c',
@@ -563,22 +523,19 @@ external_lzma_sources = files(
     '../source/external/lzma/Ppmd8.c',
     '../source/external/lzma/Ppmd8Dec.c',
     '../source/external/lzma/Ppmd8Enc.c',
-    '../source/external/lzma/Sort.c',
-    '../source/external/lzma/Xz.c',
-    '../source/external/lzma/XzCrc64.c',
-    '../source/external/lzma/XzCrc64Opt.c',
-    '../source/external/lzma/XzDec.c',
-    '../source/external/lzma/XzEnc.c',
-    '../source/external/lzma/XzIn.c'
+    '../source/external/lzma/Sort.c'
 )
+
 external_aes_sources = files(
     '../source/external/aes/bc_aes.cpp'
 )
+
 external_bc_sources = files(
     '../source/external/bc/BC4BC5.cpp',
     '../source/external/bc/BC6HBC7.cpp',
     '../source/external/bc/BC.cpp'
 )
+
 external_bzip2_sources = files(
     '../source/external/bzip2/bz_blocksort.c',
     '../source/external/bzip2/bz_compress.c',
@@ -588,6 +545,7 @@ external_bzip2_sources = files(
     '../source/external/bzip2/bzlib.c',
     '../source/external/bzip2/bz_randtable.c'
 )
+
 external_google_sources = files(
     '../source/external/google/astc.cpp',
     '../source/external/google/etc1.cpp',
@@ -598,6 +556,7 @@ external_lz4_sources = files(
     '../source/external/lz4/lz4.c',
     '../source/external/lz4/lz4hc.c'
 )
+
 external_lzfse_sources = files(
     '../source/external/lzfse/lzfse_decode_base.c',
     '../source/external/lzfse/lzfse_decode.c',
@@ -607,9 +566,11 @@ external_lzfse_sources = files(
     '../source/external/lzfse/lzvn_decode_base.c',
     '../source/external/lzfse/lzvn_encode_base.c',
 )
+
 external_lzo_sources = files(
     '../source/external/lzo/minilzo.c'
 )
+
 external_deflate_sources = files(
     '../source/external/libdeflate/lib/deflate_compress.c',
     '../source/external/libdeflate/lib/deflate_decompress.c',
@@ -620,9 +581,18 @@ external_deflate_sources = files(
     '../source/external/libdeflate/lib/libd_utils.c',
     '../source/external/libdeflate/lib/zlib_compress.c',
     '../source/external/libdeflate/lib/zlib_decompress.c',
-    '../source/external/libdeflate/lib/x86/cpu_x86_features.c',
-    '../source/external/libdeflate/lib/arm/cpu_arm_features.c'
 )
+
+if is_arm
+    external_deflate_sources += files(
+        '../source/external/libdeflate/lib/arm/cpu_arm_features.c'
+    )
+elif is_x86
+    external_deflate_sources += files(
+        '../source/external/libdeflate/lib/x86/cpu_x86_features.c',
+    )
+endif
+
 external_unrar_sources = files(
     '../source/external/unrar/crc.cpp',
     '../source/external/unrar/crypt.cpp',
@@ -632,6 +602,7 @@ external_unrar_sources = files(
     '../source/external/unrar/rijndael.cpp',
     '../source/external/unrar/unpack.cpp'
 )
+
 external_zstd_sources = files(
     '../source/external/zstd/common/zstd_common.c',
     '../source/external/zstd/common/fse_decompress.c',
@@ -659,6 +630,7 @@ external_zstd_sources = files(
     '../source/external/zstd/decompress/zstd_decompress_block.c',
     '../source/external/zstd/decompress/zstd_ddict.c'
 )
+
 external_webp_sources = files(
     '../source/external/libwebp/src/demux/demux.c',
     '../source/external/libwebp/src/demux/anim_decode.c',
@@ -739,6 +711,7 @@ external_webp_sources = files(
     '../source/external/libwebp/src/dsp/enc_msa.c',
     '../source/external/libwebp/src/dsp/dec_sse2.c',
     '../source/external/libwebp/src/dsp/lossless_sse2.c',
+    '../source/external/libwebp/src/dsp/lossless_sse41.c',
     '../source/external/libwebp/src/dsp/lossless_enc.c',
     '../source/external/libwebp/src/dsp/yuv_mips_dsp_r2.c',
     '../source/external/libwebp/src/dsp/lossless_enc_mips32.c',
@@ -775,6 +748,7 @@ external_webp_sources = files(
     '../source/external/libwebp/src/utils/bit_reader_utils.c',
     '../source/external/libwebp/src/utils/random_utils.c'
 )
+
 external_zpng_sources = files(
     '../source/external/zpng/zpng.cpp'
 )
@@ -811,15 +785,15 @@ else
         add_project_arguments('-ffast-math', language: ['c', 'cpp'])
     endif
 
-    if (host_machine.cpu_family() == 'arm' and enable_neon) or host_machine.cpu_family() == 'aarch64'
+    if host_machine.cpu_family() == 'arm' and enable_neon
         message('SIMD: NEON')
-        if (host_machine.cpu_family() == 'arm')
-            add_project_arguments('-mfpu=neon', '-mfloat-abi=hard', language: ['c', 'cpp'])
-            add_project_arguments('-fpermissive', '-Wno-psabi', language: ['c', 'cpp'])
-        endif
+        add_project_arguments('-mfpu=neon', '-mfloat-abi=hard', language: ['c', 'cpp'])
+        add_project_arguments('-fpermissive', '-Wno-psabi', language: ['c', 'cpp'])
+    elif host_machine.cpu_family() == 'aarch64'
+        message('SIMD: NEON64')
     endif
 
-    if host_machine.cpu_family() == 'x86'  or host_machine.cpu_family() == 'x86'
+    if host_machine.cpu_family() == 'x86' or host_machine.cpu_family() == 'x86_64'
         # enable AES (2008) by default
         add_project_arguments('-maes', language: ['c', 'cpp'])
 
@@ -879,9 +853,7 @@ threads_dep = dependency('threads')
 
 mango_deps             = [ threads_dep ]
 mango_public_deps      = [ ]
-mango_framebuffer_deps = [ ]
 mango_opengl_deps      = [ ]
-mango_vulkan_deps      = [ ]
 
 opengl_dep = dependency('gl')
 mango_public_deps += opengl_dep
@@ -940,18 +912,9 @@ mango_dep = declare_dependency(
     compile_args        : mango_public_cpp_args + mango_interface_cpp_args
 )
 
-mango_framebuffer_deps += [ mango_dep ]
-mango_framebuffer = static_library('mango-framebuffer',
-    sources             : window_sources + framebuffer_sources,
-    dependencies        : mango_framebuffer_deps,
-    include_directories : mango_inc,
-    cpp_args            : mango_public_cpp_args,
-    install             : true
-)
-
 mango_opengl = static_library('mango-opengl',
     sources             : window_sources + opengl_sources,
-    link_with           : mango_framebuffer,
+    link_with           : mango,
     dependencies        : mango_opengl_deps,
     include_directories : mango_inc,
     cpp_args            : mango_public_cpp_args,
@@ -964,41 +927,17 @@ mango_opengl_dep = declare_dependency(
     compile_args        : mango_public_cpp_args + mango_interface_cpp_args
 )
 
-mango_vulkan = static_library('mango-vulkan',
-    sources             : window_sources + vulkan_sources,
-    link_with           : mango_framebuffer,
-    include_directories : mango_inc,
-    install             : true
-)
-
-mango_vulkan_dep = declare_dependency(
-    link_with           : mango_vulkan,
-    include_directories : mango_inc
-)
-
 install_subdir('../include/mango', install_dir : 'include')
 
 pkg = import('pkgconfig')
 
 pkg.generate(mango,
     libraries_private : [ mango_deps ],
-    description : 'A multi-platform low-level development framework for graphics programmers - core'
-)
-
-pkg.generate(mango_framebuffer,
-    name: 'mango-framebuffer',
-    libraries_private : [ mango_framebuffer_deps ],
-    description : 'A multi-platform low-level development framework for graphics programmers - framebuffer'
+    description : 'A multi-platform low-level development framework for graphics programmers - Core'
 )
 
 pkg.generate(mango_opengl,
     name: 'mango-opengl',
     libraries_private : [ mango_opengl_deps ],
-    description : 'A multi-platform low-level development framework for graphics programmers - opengl'
-)
-
-pkg.generate(mango_vulkan,
-    name: 'mango-vulkan',
-    libraries_private : [ mango_vulkan_deps ],
-    description : 'A multi-platform low-level development framework for graphics programmers - vulkan'
+    description : 'A multi-platform low-level development framework for graphics programmers - OpenGL'
 )

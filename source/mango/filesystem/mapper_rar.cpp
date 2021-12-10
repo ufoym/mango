@@ -14,9 +14,9 @@
 #include <mango/filesystem/path.hpp>
 #include "indexer.hpp"
 
-#if defined(MANGO_ENABLE_ARCHIVE_RAR)
-
 #include "../../external/unrar/rar.hpp"
+
+// https://www.rarlab.com/technote.htm
 
 namespace
 {
@@ -80,10 +80,10 @@ namespace
     // RAR unicode filename conversion code
     // -----------------------------------------------------------------
 
-    void decodeUnicode(const u8* name, const u8* encName, int encSize, wchar_t* unicodeName, int maxDecSize)
+    void decodeUnicode(const u8* name, const u8* encName, size_t encSize, wchar_t* unicodeName, size_t maxDecSize)
     {
-        int encPos = 0;
-        int decPos = 0;
+        size_t encPos = 0;
+        size_t decPos = 0;
         int flagBits = 0;
         u8 flags = 0;
         u8 highByte = encName[encPos++];
@@ -137,17 +137,20 @@ namespace
         unicodeName[decPos < maxDecSize ? decPos : maxDecSize - 1] = 0;
     }
 
-    std::string decodeUnicodeFilename(const char* data, int filename_size)
+    std::string decodeUnicodeFilename(const char* data, size_t filename_size)
     {
-        if (filename_size >= 1024)
+        constexpr size_t UNICODE_FILENAME_MAX_LENGTH = 1024;
+
+        if (filename_size >= UNICODE_FILENAME_MAX_LENGTH)
         {
-            MANGO_EXCEPTION("[mapper.rar] Too long unicode filename.");
+            // empty filename is used later to signify file is not present
+            return "";
         }
 
-        char buffer[1024];
+        char buffer[UNICODE_FILENAME_MAX_LENGTH];
         std::memcpy(buffer, data, filename_size);
 
-        int length;
+        size_t length;
         for (length = 0; length < filename_size; ++length)
         {
             if (!buffer[length])
@@ -159,9 +162,9 @@ namespace
 
         if (length <= filename_size)
         {
-            wchar_t temp[1024];
+            wchar_t temp[UNICODE_FILENAME_MAX_LENGTH];
             const u8* u = reinterpret_cast<const u8*>(buffer);
-            decodeUnicode(u, u + length, filename_size - length, temp, 1024);
+            decodeUnicode(u, u + length, filename_size - length, temp, UNICODE_FILENAME_MAX_LENGTH);
             s = mango::u16_toBytes(temp);
         }
         else
@@ -235,7 +238,7 @@ namespace
         u8   version;
         u8   method;
         std::string filename;
-        bool    is_encrypted { false };
+        bool is_encrypted { false };
 
         Header(const u8* address)
         {
@@ -344,7 +347,7 @@ namespace
 
         bool isSupportedVersion() const
         {
-            return method >= 0x30 && method <= 0x35 && version <= 36;
+            return method >= 0x30 && method <= 0x35 && version <= 36 && !filename.empty();
         }
     };
 
@@ -355,7 +358,7 @@ namespace
         u32  crc;
         u8   version;
         u8   method;
-        bool    is_rar5;
+        bool is_rar5;
         std::string filename;
 
         bool folder;
@@ -400,8 +403,8 @@ namespace
 
 } // namespace
 
-namespace mango {
-namespace filesystem {
+namespace mango::filesystem
+{
 
     // -----------------------------------------------------------------
     // MapperRAR
@@ -418,54 +421,47 @@ namespace filesystem {
         MapperRAR(ConstMemory parent, const std::string& password)
             : m_password(password)
         {
-            const u8* start = parent.address;
-            const u8* end = parent.address + parent.size;
-
-            if (start)
+            if (parent.address)
             {
-                parse(start, end);
+                const u8* ptr = parent.address;
+                const u8* end = parent.address + parent.size;
+
+                const u8 rar4_signature[] = { 0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00 };
+                const u8 rar5_signature[] = { 0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00 };
+
+                if (!std::memcmp(ptr, rar4_signature, 7))
+                {
+                    // RAR 4.x
+                    parse_rar4(ptr + 7, end);
+                }
+                else if (!std::memcmp(ptr, rar5_signature, 8))
+                {
+                    // RAR 5.0
+                    parse_rar5(ptr + 8, end);
+                }
+                else
+                {
+                    // Incorrect signature
+                }
+
+                for (auto& header : m_files)
+                {
+                    std::string filename = header.filename;
+                    while (!filename.empty())
+                    {
+                        std::string folder = getPath(filename.substr(0, filename.length() - 1));
+
+                        header.filename = filename.substr(folder.length());
+                        m_folders.insert(folder, filename, header);
+                        header.folder = true;
+                        filename = folder;
+                    }
+                }
             }
         }
 
         ~MapperRAR()
         {
-        }
-
-        void parse(const u8* start, const u8* end)
-        {
-            const u8* p = start;
-
-            const u8 rar4_signature[] = { 0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00 };
-            const u8 rar5_signature[] = { 0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00 };
-
-            if (!std::memcmp(p, rar4_signature, 7))
-            {
-                // RAR 4.x
-                parse_rar4(start + 7, end);
-            }
-            else if (!std::memcmp(p, rar5_signature, 8))
-            {
-                // RAR 5.0
-                parse_rar5(start + 8, end);
-            }
-            else
-            {
-                MANGO_EXCEPTION("[mapper.rar] Incorrect signature.");
-            }
-
-            for (auto& header : m_files)
-            {
-                std::string filename = header.filename;
-                while (!filename.empty())
-                {
-                    std::string folder = getPath(filename.substr(0, filename.length() - 1));
-
-                    header.filename = filename.substr(folder.length());
-                    m_folders.insert(folder, filename, header);
-                    header.folder = true;
-                    filename = folder;
-                }
-            }
         }
 
         void parse_rar4(const u8* start, const u8* end)
@@ -504,11 +500,12 @@ namespace filesystem {
                             {
                                 file.filename += "/";
                             }
+
                             m_files.push_back(file);
                         }
                         else
                         {
-                            // ignore file (unsupported compression)
+                            // ignore file (unsupported compression -or- incorrect filename)
                         }
 
                         // skip compressed data
@@ -627,7 +624,7 @@ namespace filesystem {
         {
             mango::LittleEndianConstPointer p = start;
 
-            for ( ; p < end;)
+            for ( ; p < end; )
             {
                 u32 crc = p.read32();
                 u64 header_size = vint(p);
@@ -692,6 +689,7 @@ namespace filesystem {
             {
                 return !ptrHeader->folder;
             }
+
             return false;
         }
 
@@ -751,7 +749,4 @@ namespace filesystem {
         return mapper;
     }
 
-} // namespace filesystem
-} // namespace mango
-
-#endif // MANGO_ENABLE_ARCHIVE_RAR
+} // namespace mango::filesystem

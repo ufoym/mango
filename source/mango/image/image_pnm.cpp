@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <cmath>
 #include <cctype>
@@ -10,11 +10,10 @@
 #include <mango/core/string.hpp>
 #include <mango/image/image.hpp>
 
-#ifdef MANGO_ENABLE_IMAGE_PNM
-
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     const char* skipComment(const char* p, const char* end)
     {
@@ -320,7 +319,7 @@ namespace
             {
                 switch (channels)
                 {
-                    case 1: format = Format(32, Format::FLOAT32, ColorRGBA(32, 32, 32, 0), ColorRGBA(0, 0, 0, 0)); break;
+                    case 1: format = Format(32, Format::FLOAT32, Color(32, 32, 32, 0), Color(0, 0, 0, 0)); break;
                     case 3: format = Format(96, Format::FLOAT32, Format::RGB, 32, 32, 32, 0); break;
                     default:
                         header.setError("[ImageDecoder.PNM] Incorrect number of channels");
@@ -498,9 +497,9 @@ namespace
             return true;
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
-            MANGO_UNREFERENCED(palette);
+            MANGO_UNREFERENCED(options);
             MANGO_UNREFERENCED(level);
             MANGO_UNREFERENCED(depth);
             MANGO_UNREFERENCED(face);
@@ -541,7 +540,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderPNM()
@@ -553,6 +552,4 @@ namespace mango
         registerImageDecoder(createInterface, ".pfm");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_PNM
+} // namespace mango::image

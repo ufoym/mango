@@ -41,7 +41,7 @@
 
 */
 
-namespace mango
+namespace mango::math
 {
 
     // ------------------------------------------------------------------
@@ -1633,22 +1633,6 @@ namespace mango
     using mask32x16  = simd::mask32x16;
     using mask64x8   = simd::mask64x8;
 
-    // OpenCL vectors
-    using int2    = Vector<s32, 2>;
-    using int3    = Vector<s32, 3>;
-    using int4    = Vector<s32, 4>;
-    using uint2   = Vector<u32, 2>;
-    using uint3   = Vector<u32, 3>;
-    using uint4   = Vector<u32, 4>;
-    using half4   = Vector<float16, 4>;
-    using float2  = Vector<float32, 2>;
-    using float3  = Vector<float32, 3>;
-    using float4  = Vector<float32, 4>;
-    using float8  = Vector<float32, 8>;
-    using double2 = Vector<float64, 2>;
-    using double3 = Vector<float64, 3>;
-    using double4 = Vector<float64, 4>;
-
     // ------------------------------------------------------------------
     // maskToInt()
     // ------------------------------------------------------------------
@@ -1735,7 +1719,7 @@ namespace mango
         return simd::all_of(mask);
     }
 
-} // namespace mango
+} // namespace mango::math
 
 #include <mango/math/vector128_uint8x16.hpp>
 #include <mango/math/vector128_uint16x8.hpp>

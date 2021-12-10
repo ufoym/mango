@@ -10,14 +10,12 @@
 #include <mango/filesystem/path.hpp>
 #include "indexer.hpp"
 
-#ifdef MANGO_ENABLE_ARCHIVE_ZIP
-
 #include "../../external/libdeflate/libdeflate.h"
 
 /*
 https://courses.cs.ut.ee/MTAT.07.022/2015_fall/uploads/Main/dmitri-report-f15-16.pdf
 
-1] PKWARE Inc. APPNOTE.TXT – .ZIP File Format Specification, version 6.3.4
+[1] PKWARE Inc. APPNOTE.TXT – .ZIP File Format Specification, version 6.3.4
 https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
 
 [2] PKWARE Inc. .ZIP Application Note
@@ -26,40 +24,68 @@ https://www.pkware.com/support/zip-app-note/
 [3] PKWARE Inc. APPNOTE.TXT, version 1.0
 https://pkware.cachefly.net/webdocs/APPNOTE/APPNOTE-1.0.txt
 
-4] WinZip. AES Encryption Information: Encryption Specification AE-1 and AE-2
+[4] WinZip. AES Encryption Information: Encryption Specification AE-1 and AE-2
 http://www.winzip.com/aes_info.htm
 */
 
 namespace
 {
     using namespace mango;
-
     using mango::filesystem::Indexer;
 
     enum { DCKEYSIZE = 12 };
 
     enum Encryption : u8
     {
-        ENCRYPTION_NONE = 0,
+        ENCRYPTION_NONE    = 0,
         ENCRYPTION_CLASSIC = 1,
-        ENCRYPTION_AES128 = 2,
-        ENCRYPTION_AES192 = 3,
-        ENCRYPTION_AES256 = 4,
+        ENCRYPTION_AES128  = 2,
+        ENCRYPTION_AES192  = 3,
+        ENCRYPTION_AES256  = 4,
     };
 
-    enum Compression : u8
+    enum Compression : u16
     {
-        COMPRESSION_NONE = 0,
-        COMPRESSION_DEFLATE = 8,
-        COMPRESSION_DEFLATE64 = 9,
-        COMPRESSION_BZIP2 = 12,
-        COMPRESSION_WAVPACK = 97,
-        COMPRESSION_PPMD = 98,
-        COMPRESSION_LZMA = 14,
-        COMPRESSION_JPEG = 96,
-        COMPRESSION_AES = 99,
-        COMPRESSION_XZ = 95
+        COMPRESSION_NONE      = 0,  // stored (no compression)
+        COMPRESSION_SHRUNK    = 1,  // Shrunk
+        COMPRESSION_REDUCE_1  = 2,  // Reduced with compression factor 1
+        COMPRESSION_REDUCE_2  = 3,  // Reduced with compression factor 2
+        COMPRESSION_REDUCE_3  = 4,  // Reduced with compression factor 3
+        COMPRESSION_REDUCE_4  = 5,  // Reduced with compression factor 4
+        COMPRESSION_IMPLODE   = 6,  // Imploded
+        COMPRESSION_DEFLATE   = 8,  // Deflated
+        COMPRESSION_DEFLATE64 = 9,  // Enhanced Deflating using Deflate64(tm)
+        COMPRESSION_DCLI      = 10, // PKWARE Data Compression Library Imploding (old IBM TERSE)
+        COMPRESSION_BZIP2     = 12, // compressed using BZIP2 algorithm
+        COMPRESSION_LZMA      = 14, // LZMA
+        COMPRESSION_CMPSC     = 16, // IBM z/OS CMPSC Compression
+        COMPRESSION_TERSE     = 18, // IBM TERSE (new)
+        COMPRESSION_LZ77      = 19, // IBM LZ77 z Architecture 
+        COMPRESSION_ZSTD      = 93, // Zstandard (zstd) Compression 
+        COMPRESSION_MP3       = 94, // MP3 Compression 
+        COMPRESSION_XZ        = 95, // XZ Compression 
+        COMPRESSION_JPEG      = 96, // JPEG variant
+        COMPRESSION_WAVPACK   = 97, // WavPack compressed data
+        COMPRESSION_PPMD      = 98, // PPMd version I, Rev 1
+        COMPRESSION_AES       = 99, // AE-x encryption marker
     };
+
+    bool isCompressionSupported(u16 compression)
+    {
+        switch (compression)
+        {
+            case COMPRESSION_NONE:
+            case COMPRESSION_DEFLATE:
+            case COMPRESSION_BZIP2:
+            case COMPRESSION_LZMA:
+            case COMPRESSION_ZSTD:
+            case COMPRESSION_PPMD:
+                return true;
+
+            default:
+                return false;
+        }
+    }
 
     u32 getSaltLength(Encryption encryption)
     {
@@ -154,35 +180,35 @@ namespace
         {
             return signature == 0x04034b50;
         }
-	};
+    };
 
-	struct FileHeader
-	{
-		u32	signature;         // 0x02014b50
-		u16	versionUsed;       //
-		u16	versionNeeded;     //
-		u16	flags;             //
-		u16	compression;       // compression method
-		u16	lastModTime;       //
-		u16	lastModDate;       //
-		u32	crc;               //
-		u64	compressedSize;    // ZIP64: 0xffffffff
-		u64	uncompressedSize;  // ZIP64: 0xffffffff
-		u16	filenameLen;       // length of the filename field following this structure
-		u16	extraFieldLen;     // length of the extra field following the filename field
-		u16	commentLen;        // length of the file comment field following the extra field
-		u16	diskStart;         // the number of the disk on which this file begins, ZIP64: 0xffff
-		u16	internal;          // internal file attributes
-		u32	external;          // external file attributes
-		u64	localOffset;       // relative offset of the local file header, ZIP64: 0xffffffff
+    struct FileHeader
+    {
+        u32	signature;         // 0x02014b50
+        u16	versionUsed;       //
+        u16	versionNeeded;     //
+        u16	flags;             //
+        u16	compression;       // compression method
+        u16	lastModTime;       //
+        u16	lastModDate;       //
+        u32	crc;               //
+        u64	compressedSize;    // ZIP64: 0xffffffff
+        u64	uncompressedSize;  // ZIP64: 0xffffffff
+        u16	filenameLen;       // length of the filename field following this structure
+        u16	extraFieldLen;     // length of the extra field following the filename field
+        u16	commentLen;        // length of the file comment field following the extra field
+        u16	diskStart;         // the number of the disk on which this file begins, ZIP64: 0xffff
+        u16	internal;          // internal file attributes
+        u32	external;          // external file attributes
+        u64	localOffset;       // relative offset of the local file header, ZIP64: 0xffffffff
 
         std::string filename;      // filename is stored after the header
         bool        is_folder;     // if the last character of filename is "/", it is a folder
         Encryption  encryption;
 
-		bool read(LittleEndianConstPointer& p)
-		{
-			signature = p.read32();
+        bool read(LittleEndianConstPointer& p)
+        {
+            signature = p.read32();
             if (signature != 0x02014b50)
             {
                 return false;
@@ -526,8 +552,8 @@ namespace
 
 } // namespace
 
-namespace mango {
-namespace filesystem {
+namespace mango::filesystem
+{
 
     // -----------------------------------------------------------------
     // VirtualMemoryZIP
@@ -581,15 +607,19 @@ namespace filesystem {
                         FileHeader header;
                         if (header.read(p))
                         {
-                            std::string filename = header.filename;
-                            while (!filename.empty())
+                            // NOTE: Don't index files that can't be decompressed
+                            if (isCompressionSupported(header.compression))
                             {
-                                std::string folder = getPath(filename.substr(0, filename.length() - 1));
+                                std::string filename = header.filename;
+                                while (!filename.empty())
+                                {
+                                    std::string folder = getPath(filename.substr(0, filename.length() - 1));
 
-                                header.filename = filename.substr(folder.length());
-                                m_folders.insert(folder, filename, header);
-                                header.is_folder = true;
-                                filename = folder;
+                                    header.filename = filename.substr(folder.length());
+                                    m_folders.insert(folder, filename, header);
+                                    header.is_folder = true;
+                                    filename = folder;
+                                }
                             }
                         }
                     }
@@ -601,7 +631,7 @@ namespace filesystem {
         {
         }
 
-        VirtualMemory* mmap(const FileHeader& header, const u8* start, const std::string& password)
+        VirtualMemory* mmap(FileHeader header, const u8* start, const std::string& password)
         {
             LittleEndianConstPointer p = start + header.localOffset;
 
@@ -635,8 +665,8 @@ namespace filesystem {
                     const size_t compressed_size = size_t(header.compressedSize);
                     buffer = new u8[compressed_size];
 
-                    bool status = zip_decrypt(buffer, address, header.compressedSize, dcheader,
-                                            header.versionUsed & 0xff, header.crc, password);
+                    bool status = zip_decrypt(buffer, address, header.compressedSize,
+                        dcheader, header.versionUsed & 0xff, header.crc, password);
                     if (!status)
                     {
                         delete[] buffer;
@@ -675,6 +705,8 @@ namespace filesystem {
                 }
             }
 
+            Compressor compressor;
+
             switch (header.compression)
             {
                 case COMPRESSION_NONE:
@@ -706,86 +738,80 @@ namespace filesystem {
 
                 case COMPRESSION_LZMA:
                 {
-                    const size_t uncompressed_size = size_t(header.uncompressedSize);
-                    u8* uncompressed_buffer = new u8[uncompressed_size];
-
                     // parse LZMA compression header
                     p = address;
                     p += 2; // skip LZMA version
                     u16 lzma_propsize = p.read16();
+                    address = p;
+
                     if (lzma_propsize != 5)
                     {
                         delete[] buffer;
                         MANGO_EXCEPTION("[mapper.zip] Incorrect LZMA header.");
                     }
-                    address = p;
-                    u64 compressed_size = header.compressedSize - 4;
 
-                    lzma::decompress(Memory(uncompressed_buffer, size_t(header.uncompressedSize)),
-                                     ConstMemory(address, size_t(compressed_size)));
+                    header.compressedSize -= 4;
 
-                    delete[] buffer;
-                    buffer = uncompressed_buffer;
-
-                    // use decode_buffer as memory map
-                    address = buffer;
-                    size = header.uncompressedSize;
+                    compressor = getCompressor(Compressor::LZMA);
                     break;
                 }
 
                 case COMPRESSION_PPMD:
                 {
-                    const std::size_t uncompressed_size = static_cast<std::size_t>(header.uncompressedSize);
-                    u8* uncompressed_buffer = new u8[uncompressed_size];
-
-                    ppmd8::decompress(Memory(uncompressed_buffer, size_t(header.uncompressedSize)),
-                                      ConstMemory(address, size_t(header.compressedSize)));
-
-                    delete[] buffer;
-                    buffer = uncompressed_buffer;
-
-                    // use decode_buffer as memory map
-                    address = buffer;
-                    size = header.uncompressedSize;
+                    compressor = getCompressor(Compressor::PPMD8);
                     break;
                 }
 
                 case COMPRESSION_BZIP2:
                 {
-                    const std::size_t uncompressed_size = static_cast<std::size_t>(header.uncompressedSize);
-                    u8* uncompressed_buffer = new u8[uncompressed_size];
-
-                    bzip2::decompress(Memory(uncompressed_buffer, size_t(header.uncompressedSize)),
-                                      ConstMemory(address, size_t(header.compressedSize)));
-
-                    delete[] buffer;
-                    buffer = uncompressed_buffer;
-
-                    // use decode_buffer as memory map
-                    address = buffer;
-                    size = header.uncompressedSize;
+                    compressor = getCompressor(Compressor::BZIP2);
                     break;
                 }
 
+                case COMPRESSION_ZSTD:
+                {
+                    compressor = getCompressor(Compressor::ZSTD);
+                    break;
+                }
+
+                case COMPRESSION_SHRUNK:
+                case COMPRESSION_REDUCE_1:
+                case COMPRESSION_REDUCE_2:
+                case COMPRESSION_REDUCE_3:
+                case COMPRESSION_REDUCE_4:
+                case COMPRESSION_IMPLODE:
+                case COMPRESSION_DCLI:
                 case COMPRESSION_DEFLATE64:
+                case COMPRESSION_CMPSC:
+                case COMPRESSION_TERSE:
+                case COMPRESSION_LZ77:
+                case COMPRESSION_MP3:
+                case COMPRESSION_XZ:
                 case COMPRESSION_WAVPACK:
                 case COMPRESSION_JPEG:
                 case COMPRESSION_AES:
-                case COMPRESSION_XZ:
                     MANGO_EXCEPTION("[mapper.zip] Unsupported compression algorithm (%d).", header.compression);
                     break;
             }
 
-            VirtualMemory* memory;
-            if (buffer)
+            if (compressor.decompress)
             {
-                memory = new VirtualMemoryZIP(buffer, buffer, size_t(size));
-            }
-            else
-            {
-                memory = new VirtualMemoryZIP(address, nullptr, size_t(size));
+                const size_t uncompressed_size = size_t(header.uncompressedSize);
+                u8* uncompressed_buffer = new u8[uncompressed_size];
+
+                ConstMemory input(address, size_t(header.compressedSize));
+                Memory output(uncompressed_buffer, size_t(header.uncompressedSize));
+                compressor.decompress(output, input);
+
+                delete[] buffer;
+                buffer = uncompressed_buffer;
+
+                // use decode_buffer as memory map
+                address = buffer;
+                size = header.uncompressedSize;
             }
 
+            VirtualMemory* memory = new VirtualMemoryZIP(address, buffer, size_t(size));
             return memory;
         }
 
@@ -855,7 +881,4 @@ namespace filesystem {
         return mapper;
     }
 
-} // namespace filesystem
-} // namespace mango
-
-#endif // MANGO_ENABLE_ARCHIVE_ZIP
+} // namespace mango::filesystem

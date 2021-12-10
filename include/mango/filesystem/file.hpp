@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #pragma once
 
@@ -12,17 +12,18 @@
 #include <mango/filesystem/mapper.hpp>
 #include <mango/filesystem/path.hpp>
 
-namespace mango {
-namespace filesystem {
+namespace mango::filesystem
+{
 
     class File : protected NonCopyable
     {
     protected:
         std::string m_filename;
         std::unique_ptr<Path> m_path;
-        std::unique_ptr<VirtualMemory> m_memory;
+        std::unique_ptr<VirtualMemory> m_virtual_memory;
+        ConstMemory m_memory;
 
-        ConstMemory getMemory() const;
+        void initMemory(Mapper& mapper);
 
     public:
         File(const std::string& filename);
@@ -64,5 +65,22 @@ namespace filesystem {
         }
     };
 
-} // namespace filesystem
-} // namespace mango
+    class InputFileStream : public FileStream
+    {
+    public:
+        InputFileStream(const std::string& filename)
+            : FileStream(filename, Stream::READ)
+        {
+        }
+    };
+
+    class OutputFileStream : public FileStream
+    {
+    public:
+        OutputFileStream(const std::string& filename)
+            : FileStream(filename, Stream::WRITE)
+        {
+        }
+    };
+
+} // namespace mango::filesystem

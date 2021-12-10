@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <cmath>
 #include <mango/core/pointer.hpp>
@@ -8,11 +8,10 @@
 #include <mango/core/system.hpp>
 #include <mango/image/image.hpp>
 
-#ifdef MANGO_ENABLE_IMAGE_SGI
-
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     // ------------------------------------------------------------
     // .sgi parser
@@ -170,7 +169,7 @@ namespace
             {
                 for (int y = 0; y < height; ++y)
                 {
-                    int scanline = (height - 1) - y; // mirror y-axis
+                    int scanline = (height - 1) - y; // mirror vertically
                     u8* dest = s.address<u8>(0, scanline) + channel;
 
                     int index = y + channel * height;
@@ -207,9 +206,9 @@ namespace
             }
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
-            MANGO_UNREFERENCED(palette);
+            MANGO_UNREFERENCED(options);
             MANGO_UNREFERENCED(level);
             MANGO_UNREFERENCED(depth);
             MANGO_UNREFERENCED(face);
@@ -266,7 +265,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderSGI()
@@ -277,6 +276,4 @@ namespace mango
         registerImageDecoder(createInterface, ".sgi");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_SGI
+} // namespace mango::image

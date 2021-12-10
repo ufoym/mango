@@ -1,42 +1,15 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *  jpeg.c - JPEG compression for SRV-1 robot
- *    Copyright (C) 2005-2009  Surveyor Corporation
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details (www.gnu.org/licenses)
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-//
-// This file contains optimizations and other changes (C) Frank Van Hooft 2009
-//
-
-//
-// The code has been modified for integration with MANGO image encode/decode and streaming API.
-//
-
 #include <mango/core/pointer.hpp>
 #include "jpeg.hpp"
 #include <cstring>
 
-// NOTE: Some parts of the code still use the SRV-1 license where this code started from,
-//       it has very little original code left but enough that we MUST respect the GPL license!!!
-#ifdef MANGO_ENABLE_LICENSE_GPL
-
 namespace
 {
     using namespace mango;
+    using namespace mango::math;
     using namespace jpeg;
 
     constexpr int BLOCK_SIZE = 64;
@@ -319,6 +292,8 @@ namespace
 
         std::string info;
 
+        using ReadFunc = void (*)(s16*, const u8*, size_t, int, int);
+
         void (*read_8x8) (s16* block, const u8* input, size_t stride, int rows, int cols);
         void (*read)     (s16* block, const u8* input, size_t stride, int rows, int cols);
         void (*fdct)     (s16* dest, const s16* data, const s16* qtable);
@@ -327,6 +302,7 @@ namespace
         jpegEncoder(const Surface& surface, SampleType sample, const ImageEncodeOptions& options);
         ~jpegEncoder();
 
+        void encodeInterval(EncodeBuffer& buffer, const u8* src, size_t stride, ReadFunc read_func, int rows);
         void writeMarkers(BigEndianStream& p);
         ImageEncodeStatus encodeImage(Stream& stream);
     };
@@ -405,7 +381,7 @@ namespace
         }
     }
 
-#if defined(JPEG_ENABLE_SSE2)
+#if defined(MANGO_ENABLE_SSE2)
 
     // ----------------------------------------------------------------------------
     // fdct sse2
@@ -417,9 +393,6 @@ namespace
         a = _mm_unpacklo_epi16(a, b);
         b = _mm_unpackhi_epi16(c, b);
     }
-
-    #define JPEG_CONST16(x, y) \
-        _mm_setr_epi16(x, y, x, y, x, y, x, y)
 
     #define JPEG_TRANSPOSE16() \
         interleave16(v0, v4); \
@@ -435,7 +408,10 @@ namespace
         interleave16(v4, v5); \
         interleave16(v6, v7)
 
-    #define JPEG_TRANSFORM(n) { \
+    #define JPEG_CONST16_SSE2(x, y) \
+        _mm_setr_epi16(x, y, x, y, x, y, x, y)
+
+    #define JPEG_TRANSFORM_SSE2(n) { \
         __m128i a_lo; \
         __m128i a_hi; \
         __m128i b_lo; \
@@ -514,16 +490,16 @@ namespace
         constexpr s16 c6 = 554;  // cos 6PI/16 * root(2)
         constexpr s16 c7 = 283;  // cos 7PI/16 * root(2)
 
-        __m128i c26p = JPEG_CONST16(c2, c6);
-        __m128i c62n = JPEG_CONST16(c6,-c2);
-        __m128i c75n = JPEG_CONST16(c7,-c5);
-        __m128i c31n = JPEG_CONST16(c3,-c1);
-        __m128i c51n = JPEG_CONST16(c5,-c1);
-        __m128i c73p = JPEG_CONST16(c7, c3);
-        __m128i c37n = JPEG_CONST16(c3,-c7);
-        __m128i c15p = JPEG_CONST16(c1, c5);
-        __m128i c13p = JPEG_CONST16(c1, c3);
-        __m128i c57p = JPEG_CONST16(c5, c7);
+        const __m128i c26p = JPEG_CONST16_SSE2(c2, c6);
+        const __m128i c62n = JPEG_CONST16_SSE2(c6,-c2);
+        const __m128i c75n = JPEG_CONST16_SSE2(c7,-c5);
+        const __m128i c31n = JPEG_CONST16_SSE2(c3,-c1);
+        const __m128i c51n = JPEG_CONST16_SSE2(c5,-c1);
+        const __m128i c73p = JPEG_CONST16_SSE2(c7, c3);
+        const __m128i c37n = JPEG_CONST16_SSE2(c3,-c7);
+        const __m128i c15p = JPEG_CONST16_SSE2(c1, c5);
+        const __m128i c13p = JPEG_CONST16_SSE2(c1, c3);
+        const __m128i c57p = JPEG_CONST16_SSE2(c5, c7);
 
         // load
 
@@ -549,8 +525,9 @@ namespace
         __m128i x1 = _mm_sub_epi16(v1, v6);
         __m128i x2 = _mm_sub_epi16(v2, v5);
         __m128i x3 = _mm_sub_epi16(v3, v4);
-        __m128i x4 = _mm_add_epi16(x8, x5);
 
+        __m128i x4;
+        x4 = _mm_add_epi16(x8, x5);
         x8 = _mm_sub_epi16(x8, x5);
         x5 = _mm_add_epi16(x7, x6);
         x7 = _mm_sub_epi16(x7, x6);
@@ -565,22 +542,22 @@ namespace
         v0 = _mm_add_epi16(x4, x5);
         v4 = _mm_sub_epi16(x4, x5);
 
-        JPEG_TRANSFORM(10);
+        JPEG_TRANSFORM_SSE2(10);
 
         // pass 2
 
         JPEG_TRANSPOSE16();
 
         x8 = _mm_add_epi16(v0, v7);
-        x0 = _mm_sub_epi16(v0, v7);
         x7 = _mm_add_epi16(v1, v6);
-        x1 = _mm_sub_epi16(v1, v6);
         x6 = _mm_add_epi16(v2, v5);
-        x2 = _mm_sub_epi16(v2, v5);
         x5 = _mm_add_epi16(v3, v4);
+        x0 = _mm_sub_epi16(v0, v7);
+        x1 = _mm_sub_epi16(v1, v6);
+        x2 = _mm_sub_epi16(v2, v5);
         x3 = _mm_sub_epi16(v3, v4);
-        x4 = _mm_add_epi16(x8, x5);
 
+        x4 = _mm_add_epi16(x8, x5);
         x8 = _mm_sub_epi16(x8, x5);
         x5 = _mm_add_epi16(x7, x6);
         x7 = _mm_sub_epi16(x7, x6);
@@ -595,7 +572,7 @@ namespace
         v0 = _mm_srai_epi16(_mm_add_epi16(x4, x5), 3);
         v4 = _mm_srai_epi16(_mm_sub_epi16(x4, x5), 3);
 
-        JPEG_TRANSFORM(13);
+        JPEG_TRANSFORM_SSE2(13);
 
         // quantize
 
@@ -625,11 +602,34 @@ namespace
         _mm_storeu_si128(d + 7, v7);
     }
 
-#if defined(JPEG_ENABLE_AVX2)
+#endif // defined(MANGO_ENABLE_SSE2)
+
+#if defined(MANGO_ENABLE_AVX2__disabled)
 
     // ----------------------------------------------------------------------------
     // fdct_avx2
     // ----------------------------------------------------------------------------
+
+    static inline
+    void transpose_8x8_avx2(__m256i& v0, __m256i& v1, __m256i& v2, __m256i& v3)
+    {
+        __m256i x0 = _mm256_permute2x128_si256(v0, v2, 0x20);
+        __m256i x1 = _mm256_permute2x128_si256(v0, v2, 0x31);
+        __m256i x2 = _mm256_permute2x128_si256(v1, v3, 0x20);
+        __m256i x3 = _mm256_permute2x128_si256(v1, v3, 0x31);
+        __m256i v4 = _mm256_unpacklo_epi16(x0, x1);
+        __m256i v5 = _mm256_unpackhi_epi16(x0, x1);
+        __m256i v6 = _mm256_unpacklo_epi16(x2, x3);
+        __m256i v7 = _mm256_unpackhi_epi16(x2, x3);
+        x0 = _mm256_unpacklo_epi32(v4, v6);
+        x1 = _mm256_unpackhi_epi32(v4, v6);
+        x2 = _mm256_unpacklo_epi32(v5, v7);
+        x3 = _mm256_unpackhi_epi32(v5, v7);
+        v0 = _mm256_permute4x64_epi64(x0, 0xd8);
+        v1 = _mm256_permute4x64_epi64(x1, 0xd8);
+        v2 = _mm256_permute4x64_epi64(x2, 0xd8);
+        v3 = _mm256_permute4x64_epi64(x3, 0xd8);
+    }
 
     static inline
     __m256i quantize(__m256i v, __m256i q, __m256i one, __m256i bias)
@@ -642,6 +642,71 @@ namespace
         return v;
     }
 
+    #define JPEG_CONST16_AVX2(x, y) \
+        _mm256_setr_epi16(x, y, x, y, x, y, x, y, x, y, x, y, x, y, x, y)
+
+    template <int nbits>
+    __m256i transform_sub_term(__m256i c0, __m256i c1, __m256i c2, __m256i c3, __m256i c4, __m256i c5)
+    {
+        __m256i a;
+        __m256i b;
+
+        a = _mm256_madd_epi16(c0, c1);
+        a = _mm256_srai_epi32(a, nbits);
+        __m128i v2 = _mm_packs_epi32(_mm256_extracti128_si256(a, 0), _mm256_extracti128_si256(a, 1));
+
+        a = _mm256_madd_epi16(c2, c3);
+        b = _mm256_madd_epi16(c4, c5);
+        a = _mm256_sub_epi32(a, b); // <-- sub
+        a = _mm256_srai_epi32(a, nbits);
+        __m128i v3 = _mm_packs_epi32(_mm256_extracti128_si256(a, 0), _mm256_extracti128_si256(a, 1));
+
+        return _mm256_setr_m128i(v2, v3);
+    }
+
+    template <int nbits>
+    __m256i transform_add_term(__m256i c0, __m256i c1, __m256i c2, __m256i c3, __m256i c4, __m256i c5)
+    {
+        __m256i a;
+        __m256i b;
+
+        a = _mm256_madd_epi16(c0, c1);
+        a = _mm256_srai_epi32(a, nbits);
+        __m128i v2 = _mm_packs_epi32(_mm256_extracti128_si256(a, 0), _mm256_extracti128_si256(a, 1));
+
+        a = _mm256_madd_epi16(c2, c3);
+        b = _mm256_madd_epi16(c4, c5);
+        a = _mm256_add_epi32(a, b); // <-- add
+        a = _mm256_srai_epi32(a, nbits);
+        __m128i v3 = _mm_packs_epi32(_mm256_extracti128_si256(a, 0), _mm256_extracti128_si256(a, 1));
+
+        return _mm256_setr_m128i(v2, v3);
+    }
+
+    template <int nbits>
+    __m256i transform_term(__m128i v, __m256i c0, __m256i c1, __m256i c2, __m256i c3)
+    {
+        __m256i a;
+        __m256i b;
+
+        a = _mm256_madd_epi16(c0, c1);
+        b = _mm256_madd_epi16(c2, c3);
+        a = _mm256_add_epi32(a, b);
+        a = _mm256_srai_epi32(a, nbits);
+        __m128i v5 = _mm_packs_epi32(_mm256_extracti128_si256(a, 0), _mm256_extracti128_si256(a, 1));
+        return _mm256_setr_m128i(v, v5);
+    }
+
+    static inline
+    __m256i unpack(__m256i  x)
+    {
+        __m128i x0 = _mm256_extracti128_si256(x, 0);
+        __m128i x1 = _mm256_extracti128_si256(x, 1);
+        __m128i lo = _mm_unpacklo_epi16(x0, x1);
+        __m128i hi = _mm_unpackhi_epi16(x0, x1);
+        return _mm256_setr_m128i(lo, hi);
+    }
+
     static
     void fdct_avx2(s16* dest, const s16* data, const s16* qtable)
     {
@@ -652,93 +717,91 @@ namespace
         constexpr s16 c6 = 554;  // cos 6PI/16 * root(2)
         constexpr s16 c7 = 283;  // cos 7PI/16 * root(2)
 
-        __m128i c26p = JPEG_CONST16(c2, c6);
-        __m128i c62n = JPEG_CONST16(c6,-c2);
-        __m128i c75n = JPEG_CONST16(c7,-c5);
-        __m128i c31n = JPEG_CONST16(c3,-c1);
-        __m128i c51n = JPEG_CONST16(c5,-c1);
-        __m128i c73p = JPEG_CONST16(c7, c3);
-        __m128i c37n = JPEG_CONST16(c3,-c7);
-        __m128i c15p = JPEG_CONST16(c1, c5);
-        __m128i c13p = JPEG_CONST16(c1, c3);
-        __m128i c57p = JPEG_CONST16(c5, c7);
+        const __m256i c26p = JPEG_CONST16_AVX2(c2, c6);
+        const __m256i c62n = JPEG_CONST16_AVX2(c6,-c2);
+        const __m256i c75n = JPEG_CONST16_AVX2(c7,-c5);
+        const __m256i c31n = JPEG_CONST16_AVX2(c3,-c1);
+        const __m256i c51n = JPEG_CONST16_AVX2(c5,-c1);
+        const __m256i c73p = JPEG_CONST16_AVX2(c7, c3);
+        const __m256i c37n = JPEG_CONST16_AVX2(c3,-c7);
+        const __m256i c15p = JPEG_CONST16_AVX2(c1, c5);
+        const __m256i c13p = JPEG_CONST16_AVX2(c1, c3);
+        const __m256i c57p = JPEG_CONST16_AVX2(c5, c7);
 
         // load
 
-        const __m128i* s = reinterpret_cast<const __m128i *>(data);
-        __m128i v0 = _mm_loadu_si128(s + 0);
-        __m128i v1 = _mm_loadu_si128(s + 1);
-        __m128i v2 = _mm_loadu_si128(s + 2);
-        __m128i v3 = _mm_loadu_si128(s + 3);
-        __m128i v4 = _mm_loadu_si128(s + 4);
-        __m128i v5 = _mm_loadu_si128(s + 5);
-        __m128i v6 = _mm_loadu_si128(s + 6);
-        __m128i v7 = _mm_loadu_si128(s + 7);
+        const __m256i* s = reinterpret_cast<const __m256i *>(data);
+        __m256i s0 = _mm256_loadu_si256(s + 0);
+        __m256i s1 = _mm256_loadu_si256(s + 1);
+        __m256i s2 = _mm256_loadu_si256(s + 2);
+        __m256i s3 = _mm256_loadu_si256(s + 3);
+
+        transpose_8x8_avx2(s0, s1, s2, s3);
 
         // pass 1
 
-        JPEG_TRANSPOSE16();
+        __m256i v76 = _mm256_permute4x64_epi64(s3, 0x4e);
+        __m256i v54 = _mm256_permute4x64_epi64(s2, 0x4e);
 
-        __m128i x8 = _mm_add_epi16(v0, v7);
-        __m128i x7 = _mm_add_epi16(v1, v6);
-        __m128i x6 = _mm_add_epi16(v2, v5);
-        __m128i x5 = _mm_add_epi16(v3, v4);
-        __m128i x0 = _mm_sub_epi16(v0, v7);
-        __m128i x1 = _mm_sub_epi16(v1, v6);
-        __m128i x2 = _mm_sub_epi16(v2, v5);
-        __m128i x3 = _mm_sub_epi16(v3, v4);
-        __m128i x4 = _mm_add_epi16(x8, x5);
+        __m256i x87 = _mm256_add_epi16(s0, v76);
+        __m256i x65 = _mm256_add_epi16(s1, v54);
+        __m256i x01 = _mm256_sub_epi16(s0, v76);
+        __m256i x23 = _mm256_sub_epi16(s1, v54);
+        __m256i x56 = _mm256_permute4x64_epi64(x65, 0x4e);
 
-        x8 = _mm_sub_epi16(x8, x5);
-        x5 = _mm_add_epi16(x7, x6);
-        x7 = _mm_sub_epi16(x7, x6);
+        __m256i x45;
+        x45 = _mm256_add_epi16(x87, x56);
+        x87 = _mm256_sub_epi16(x87, x56);
 
-        __m128i x87_lo = _mm_unpacklo_epi16(x8, x7);
-        __m128i x87_hi = _mm_unpackhi_epi16(x8, x7);
-        __m128i x01_lo = _mm_unpacklo_epi16(x0, x1);
-        __m128i x01_hi = _mm_unpackhi_epi16(x0, x1);
-        __m128i x23_lo = _mm_unpacklo_epi16(x2, x3);
-        __m128i x23_hi = _mm_unpackhi_epi16(x2, x3);
+        __m128i x4 = _mm256_extracti128_si256(x45, 0);
+        __m128i x5 = _mm256_extracti128_si256(x45, 1);
+        __m128i v0 = _mm_add_epi16(x4, x5);
+        __m128i v4 = _mm_sub_epi16(x4, x5);
 
-        v0 = _mm_add_epi16(x4, x5);
-        v4 = _mm_sub_epi16(x4, x5);
+        // transform
 
-        JPEG_TRANSFORM(10);
+        x87 = unpack(x87);
+        x01 = unpack(x01);
+        x23 = unpack(x23);
+
+        s0 = transform_term<10>(v0, x01, c13p, x23, c57p);
+        s2 = transform_term<10>(v4, x01, c51n, x23, c73p);
+        s1 = transform_sub_term<10>(x87, c26p, x01, c37n, x23, c15p);
+        s3 = transform_add_term<10>(x87, c62n, x01, c75n, x23, c31n);
 
         // pass 2
 
-        JPEG_TRANSPOSE16();
+        transpose_8x8_avx2(s0, s1, s2, s3);
 
-        x8 = _mm_add_epi16(v0, v7);
-        x0 = _mm_sub_epi16(v0, v7);
-        x7 = _mm_add_epi16(v1, v6);
-        x1 = _mm_sub_epi16(v1, v6);
-        x6 = _mm_add_epi16(v2, v5);
-        x2 = _mm_sub_epi16(v2, v5);
-        x5 = _mm_add_epi16(v3, v4);
-        x3 = _mm_sub_epi16(v3, v4);
-        x4 = _mm_add_epi16(x8, x5);
+        v76 = _mm256_permute4x64_epi64(s3, 0x4e);
+        v54 = _mm256_permute4x64_epi64(s2, 0x4e);
 
-        x8 = _mm_sub_epi16(x8, x5);
-        x5 = _mm_add_epi16(x7, x6);
-        x7 = _mm_sub_epi16(x7, x6);
+        x87 = _mm256_add_epi16(s0, v76);
+        x65 = _mm256_add_epi16(s1, v54);
+        x01 = _mm256_sub_epi16(s0, v76);
+        x23 = _mm256_sub_epi16(s1, v54);
+        x56 = _mm256_permute4x64_epi64(x65, 0x4e);
 
-        x87_lo = _mm_unpacklo_epi16(x8, x7);
-        x87_hi = _mm_unpackhi_epi16(x8, x7);
-        x01_lo = _mm_unpacklo_epi16(x0, x1);
-        x01_hi = _mm_unpackhi_epi16(x0, x1);
-        x23_lo = _mm_unpacklo_epi16(x2, x3);
-        x23_hi = _mm_unpackhi_epi16(x2, x3);
+        x45 = _mm256_add_epi16(x87, x56);
+        x87 = _mm256_sub_epi16(x87, x56);
 
-        v0 = _mm_srai_epi16(_mm_add_epi16(x4, x5), 3);
-        v4 = _mm_srai_epi16(_mm_sub_epi16(x4, x5), 3);
+        x4 = _mm256_extracti128_si256(x45, 0);
+        x5 = _mm256_extracti128_si256(x45, 1);
+        v0 = _mm_add_epi16(x4, x5);
+        v4 = _mm_sub_epi16(x4, x5);
+        v0 = _mm_srai_epi16(v0, 3);
+        v4 = _mm_srai_epi16(v4, 3);
 
-        JPEG_TRANSFORM(13);
+        // transform
 
-        __m256i v01 = _mm256_setr_m128i(v0, v1);
-        __m256i v23 = _mm256_setr_m128i(v2, v3);
-        __m256i v45 = _mm256_setr_m128i(v4, v5);
-        __m256i v67 = _mm256_setr_m128i(v6, v7);
+        x87 = unpack(x87);
+        x01 = unpack(x01);
+        x23 = unpack(x23);
+
+        s0 = transform_term<13>(v0, x01, c13p, x23, c57p);
+        s2 = transform_term<13>(v4, x01, c51n, x23, c73p);
+        s1 = transform_sub_term<13>(x87, c26p, x01, c37n, x23, c15p);
+        s3 = transform_add_term<13>(x87, c62n, x01, c75n, x23, c31n);
 
         // quantize
 
@@ -746,24 +809,23 @@ namespace
         const __m256i bias = _mm256_set1_epi16(0x4000);
         const __m256i* q = reinterpret_cast<const __m256i*>(qtable);
 
-        v01 = quantize(v01, q[0], one, bias);
-        v23 = quantize(v23, q[1], one, bias);
-        v45 = quantize(v45, q[2], one, bias);
-        v67 = quantize(v67, q[3], one, bias);
+        s0 = quantize(s0, q[0], one, bias);
+        s1 = quantize(s1, q[1], one, bias);
+        s2 = quantize(s2, q[2], one, bias);
+        s3 = quantize(s3, q[3], one, bias);
 
         // store
 
         __m256i* d = reinterpret_cast<__m256i *>(dest);
-        _mm256_storeu_si256(d + 0, v01);
-        _mm256_storeu_si256(d + 1, v23);
-        _mm256_storeu_si256(d + 2, v45);
-        _mm256_storeu_si256(d + 3, v67);
+        _mm256_storeu_si256(d + 0, s0);
+        _mm256_storeu_si256(d + 1, s1);
+        _mm256_storeu_si256(d + 2, s2);
+        _mm256_storeu_si256(d + 3, s3);
     }
 
-#endif // defined(JPEG_ENABLE_AVX2)
-#endif // defined(JPEG_ENABLE_SSE2)
+#endif // defined(MANGO_ENABLE_AVX2)
 
-#if defined(JPEG_ENABLE_NEON)
+#if defined(MANGO_ENABLE_NEON)
 
     // ----------------------------------------------------------------------------
     // fdct_neon
@@ -950,7 +1012,7 @@ namespace
         vst1q_s16(dest + 7 * 8, v7);
     }
 
-#endif // defined(JPEG_ENABLE_NEON)
+#endif // defined(MANGO_ENABLE_NEON)
 
     static inline
     u8* encode_dc(HuffmanEncoder& encoder, u8* p, s16 dc, const jpegEncoder::Channel& channel)
@@ -1036,7 +1098,7 @@ namespace
         return p;
     }
 
-#if defined(JPEG_ENABLE_SSE4)
+#if defined(MANGO_ENABLE_SSE4_1)
 
     // ----------------------------------------------------------------------------
     // encode_block_ssse3
@@ -1058,7 +1120,7 @@ namespace
         return int16x8(_mm_shuffle_epi8(v, s));
     }
 
-    u64 zigzag_ssse3(const s16* in, s16* out)
+    u64 zigzag_ssse3(s16* out, const s16* in)
     {
         const __m128i* src = reinterpret_cast<const __m128i *>(in);
 
@@ -1219,27 +1281,21 @@ namespace
         __m128i zero1 = _mm_packs_epi16(_mm_cmpeq_epi16(row2, zero), _mm_cmpeq_epi16(row3, zero));
         __m128i zero2 = _mm_packs_epi16(_mm_cmpeq_epi16(row4, zero), _mm_cmpeq_epi16(row5, zero));
         __m128i zero3 = _mm_packs_epi16(_mm_cmpeq_epi16(row6, zero), _mm_cmpeq_epi16(row7, zero));
-        u32 mask_lo = _mm_movemask_epi8(zero0) | ((_mm_movemask_epi8(zero1)) << 16);
-        u32 mask_hi = _mm_movemask_epi8(zero2) | ((_mm_movemask_epi8(zero3)) << 16);
-        u64 zeromask = mask_lo;
+        u64 mask_lo = u64(_mm_movemask_epi8(zero0)) | ((u64(_mm_movemask_epi8(zero1))) << 16);
+        u64 mask_hi = u64(_mm_movemask_epi8(zero2)) | ((u64(_mm_movemask_epi8(zero3))) << 16);
+        u64 zeromask = ~((mask_hi << 32) | mask_lo);
 
         __m128i* dest = reinterpret_cast<__m128i *>(out);
-
         _mm_storeu_si128(dest + 0, row0);
         _mm_storeu_si128(dest + 1, row1);
         _mm_storeu_si128(dest + 2, row2);
         _mm_storeu_si128(dest + 3, row3);
+        _mm_storeu_si128(dest + 4, row4);
+        _mm_storeu_si128(dest + 5, row5);
+        _mm_storeu_si128(dest + 6, row6);
+        _mm_storeu_si128(dest + 7, row7);
 
-        if (mask_hi)
-        {
-            zeromask |= (u64(mask_hi) << 32);
-            _mm_storeu_si128(dest + 4, row4);
-            _mm_storeu_si128(dest + 5, row5);
-            _mm_storeu_si128(dest + 6, row6);
-            _mm_storeu_si128(dest + 7, row7);
-        }
-
-        return ~zeromask;
+        return zeromask;
     }
 
     static
@@ -1249,7 +1305,7 @@ namespace
         encoder.fdct(block, input, channel.qtable);
 
         s16 temp[64];
-        u64 zeromask = zigzag_ssse3(block, temp);
+        u64 zeromask = zigzag_ssse3(temp, block);
 
         p = encode_dc(encoder, p, temp[0], channel);
         zeromask >>= 1;
@@ -1292,227 +1348,24 @@ namespace
         return p;
     }
 
-#if defined(JPEG_ENABLE_AVX2)
+#endif // defined(MANGO_ENABLE_SSE4_1)
 
-    // ----------------------------------------------------------------------------
-    // encode_block_avx2
-    // ----------------------------------------------------------------------------
-
-    // NOTE: The zigzag is still 128 bit wide only because of the retarded 128+128 way the AVX2 works
-    // TODO: re-arrange (if possible) so that 256 bit shuffle can be used, in this form this is useless
-
-    /*
-    inline int16x16 shuffle(__m256i v, s8 c0, s8 c1, s8 c2, s8 c3, s8 c4, s8 c5, s8 c6, s8 c7,
-                                       s8 c8, s8 c9, s8 ca, s8 cb, s8 cc, s8 cd, s8 ce, s8 cf)
-    {
-        const __m256i s = _mm256_setr_epi8(
-            lane(c0, 0), lane(c0, 1), lane(c1, 0), lane(c1, 1),
-            lane(c2, 0), lane(c2, 1), lane(c3, 0), lane(c3, 1),
-            lane(c4, 0), lane(c4, 1), lane(c5, 0), lane(c5, 1),
-            lane(c6, 0), lane(c6, 1), lane(c7, 0), lane(c7, 1),
-            lane(c8, 0), lane(c8, 1), lane(c9, 0), lane(c9, 1),
-            lane(ca, 0), lane(ca, 1), lane(cb, 0), lane(cb, 1),
-            lane(cc, 0), lane(cc, 1), lane(cd, 0), lane(cd, 1),
-            lane(ce, 0), lane(ce, 1), lane(cf, 0), lane(cf, 1));
-        return int16x16(_mm256_shuffle_epi8(v, s));
-    }
-    */
-
-    u64 zigzag_avx2(const s16* in, s16* out)
-    {
-        const __m256i* src = reinterpret_cast<const __m256i *>(in);
-
-        const __m256i AB = _mm256_loadu_si256(src + 0); //  0 .. 15
-        const __m256i CD = _mm256_loadu_si256(src + 1); // 16 .. 31
-        const __m256i EF = _mm256_loadu_si256(src + 2); // 32 .. 47
-        const __m256i GH = _mm256_loadu_si256(src + 3); // 48 .. 63
-
-        const __m128i A = _mm256_extracti128_si256(AB, 0);
-        const __m128i B = _mm256_extracti128_si256(AB, 1);
-        const __m128i C = _mm256_extracti128_si256(CD, 0);
-        const __m128i D = _mm256_extracti128_si256(CD, 1);
-        const __m128i E = _mm256_extracti128_si256(EF, 0);
-        const __m128i F = _mm256_extracti128_si256(EF, 1);
-        const __m128i G = _mm256_extracti128_si256(GH, 0);
-        const __m128i H = _mm256_extracti128_si256(GH, 1);
-
-        constexpr s8 z = -1;
-
-        // ------------------------------------------------------------------------
-        //     0,  1,  8, 16,  9,  2,  3, 10, 17, 24, 32, 25, 18, 11,  4,  5,
-        // ------------------------------------------------------------------------
-        // A:  x   x   x   -   x   x   x   x   -   -   -   -   -   x   x   x
-        // B:  -   -   -   x   -   -   -   -   x   x   -   x   x   -   -   -
-        // C:  -   -   -   -   -   -   -   -   -   -   x   -   -   -   -   -
-        // D:  -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -
-
-        __m128i row0 = shuffle(A, 0, 1, z,  z, z, 2, 3,  z) |
-                       shuffle(B, z, z, 8,  z, 9, z, z, 10) |
-                       shuffle(C, z, z, z, 16, z, z, z,  z);
-
-        __m128i row1 = shuffle(A,  z,  z, z,  z,  z,  z, 4, 5) |
-                       shuffle(B,  z,  z, z,  z,  z, 11, z, z) |
-                       shuffle(C, 17,  z, z,  z, 18,  z, z, z) |
-                       shuffle(D,  z, 24, z, 25,  z,  z, z, z) |
-                       shuffle(E,  z, z, 32,  z,  z,  z, z, z);
-
-        const __m256i row01 = _mm256_setr_m128i(row0, row1);
-
-        // ------------------------------------------------------------------------
-        //    12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13,  6,  7, 14, 21, 28,
-        // ------------------------------------------------------------------------
-        // A:  x   -   -   -   -   -   -   -   -   -   x   x   x   x   -   -
-        // B:  -   x   x   -   -   -   -   -   x   x   -   -   -   -   x   x
-        // C:  -   -   -   x   x   -   x   x   -   -   -   -   -   -   -   -
-        // D:  -   -   -   -   -   x   -   -   -   -   -   -   -   -   -   -
-
-        __m128i row2 = shuffle(B, 12,  z,  z,  z,  z,  z,  z,  z) |
-                       shuffle(C,  z, 19,  z,  z,  z,  z,  z,  z) |
-                       shuffle(D,  z,  z, 26,  z,  z,  z,  z,  z) |
-                       shuffle(E,  z,  z,  z, 33,  z,  z,  z, 34) |
-                       shuffle(F,  z,  z,  z,  z, 40,  z, 41,  z) |
-                       shuffle(G,  z,  z,  z,  z,  z, 48,  z,  z);
-
-        __m128i row3 = shuffle(A,  z,  z,  z, 6, 7,  z,  z,  z) |
-                       shuffle(B,  z,  z, 13, z, z, 14,  z,  z) |
-                       shuffle(C,  z, 20,  z, z, z,  z, 21,  z) |
-                       shuffle(D, 27,  z,  z, z, z,  z,  z, 28);
-
-        const __m256i row23 = _mm256_setr_m128i(row2, row3);
-
-        // ------------------------------------------------------------------------
-        //    35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
-        // ------------------------------------------------------------------------
-        // A:  -   -   -   -   -   -   -   -   -   -   x   -   -   -   -   -
-        // B:  -   -   -   -   -   -   -   -   x   x   -   x   x   -   -   -
-        // C:  x   x   -   -   -   -   x   x   -   -   -   -   -   x   x   -
-        // D:  -   -   x   x   x   x   -   -   -   -   -   -   -   -   -   x
-
-        __m128i row4 = shuffle(E, 35,  z,  z,  z,  z,  z,  z, 36) |
-                       shuffle(F,  z, 42,  z,  z,  z,  z, 43,  z) |
-                       shuffle(G,  z,  z, 49,  z,  z, 50,  z,  z) |
-                       shuffle(H,  z,  z,  z, 56, 57,  z,  z,  z);
-
-        __m128i row5 = shuffle(B,  z,  z, 15,  z,  z,  z,  z,  z) |
-                       shuffle(C,  z, 22,  z, 23,  z,  z,  z,  z) |
-                       shuffle(D, 29,  z,  z,  z, 30,  z,  z,  z) |
-                       shuffle(E,  z,  z,  z,  z,  z, 37,  z,  z) |
-                       shuffle(F,  z,  z,  z,  z,  z,  z, 44,  z) |
-                       shuffle(G,  z,  z,  z,  z,  z,  z,  z, 51);
-
-        const __m256i row45 = _mm256_setr_m128i(row4, row5);
-
-        // ------------------------------------------------------------------------
-        //    58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63
-        // ------------------------------------------------------------------------
-        // A:  -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -
-        // B:  -   -   -   -   -   x   -   -   -   -   -   -   -   -   -   -
-        // C:  -   -   -   x   x   -   x   x   -   -   -   -   x   -   -   -
-        // D:  x   x   x   -   -   -   -   -   x   x   x   x   -   x   x   x
-
-        __m128i row6 = shuffle(D,  z,  z,  z,  z,  z, 31,  z,  z) |
-                       shuffle(E,  z,  z,  z,  z, 38,  z, 39,  z) |
-                       shuffle(F,  z,  z,  z, 45,  z,  z,  z, 46) |
-                       shuffle(G,  z,  z, 52,  z,  z,  z,  z,  z) |
-                       shuffle(H, 58, 59,  z,  z,  z,  z,  z,  z);
-
-        __m128i row7 = shuffle(F,  z,  z,  z,  z, 47,  z,  z,  z) |
-                       shuffle(G, 53,  z,  z, 54,  z, 55,  z,  z) |
-                       shuffle(H,  z, 60, 61,  z,  z,  z, 62, 63);
-
-        const __m256i row67 = _mm256_setr_m128i(row6, row7);
-
-        // compute zeromask
-        const __m256i zero = _mm256_setzero_si256();
-        __m256i zero0 = _mm256_packs_epi16(_mm256_cmpeq_epi16(row01, zero), _mm256_cmpeq_epi16(row23, zero));
-        __m256i zero1 = _mm256_packs_epi16(_mm256_cmpeq_epi16(row45, zero), _mm256_cmpeq_epi16(row67, zero));
-        zero0 = _mm256_permute4x64_epi64(zero0, 0xd8);
-        zero1 = _mm256_permute4x64_epi64(zero1, 0xd8);
-        u32 mask_lo = _mm256_movemask_epi8(zero0);
-        u32 mask_hi = _mm256_movemask_epi8(zero1);
-        u64 zeromask = mask_lo;
-
-        __m256i* dest = reinterpret_cast<__m256i *>(out);
-
-        _mm256_storeu_si256(dest + 0, row01);
-        _mm256_storeu_si256(dest + 1, row23);
-
-        if (mask_hi)
-        {
-            zeromask |= (u64(mask_hi) << 32);
-            _mm256_storeu_si256(dest + 2, row45);
-            _mm256_storeu_si256(dest + 3, row67);
-        }
-
-        return ~zeromask;
-    }
-
-    static
-    u8* encode_block_avx2(HuffmanEncoder& encoder, u8* p, const s16* input, const jpegEncoder::Channel& channel)
-    {
-        s16 block[64];
-        encoder.fdct(block, input, channel.qtable);
-
-        s16 temp[64];
-        u64 zeromask = zigzag_avx2(block, temp);
-
-        p = encode_dc(encoder, p, temp[0], channel);
-        zeromask >>= 1;
-
-        const u32* ac_code = channel.ac_code;
-        const u16* ac_size = channel.ac_size;
-        const u32 zero16_code = ac_code[1];
-        const u32 zero16_size = ac_size[1];
-
-        for (int i = 1; i < 64; ++i)
-        {
-            if (!zeromask)
-            {
-                // only zeros left
-                p = encoder.putBits(p, ac_code[0], ac_size[0]);
-                break;
-            }
-
-            int counter = u64_tzcnt(zeromask); // BMI
-            zeromask >>= (counter + 1);
-            i += counter;
-
-            while (counter > 15)
-            {
-                counter -= 16;
-                p = encoder.putBits(p, zero16_code, zero16_size);
-            }
-
-            int coeff = temp[i];
-            int absCoeff = std::abs(coeff);
-            coeff -= (absCoeff != coeff);
-
-            u32 size = u32_log2(absCoeff) + 1;
-            u32 mask = (1 << size) - 1;
-
-            int index = counter + size * 16;
-            p = encoder.putBits(p, ac_code[index] | (coeff & mask), ac_size[index]);
-        }
-
-        return p;
-    }
-
-#if defined(JPEG_ENABLE_AVX512)
+#if defined(MANGO_ENABLE_AVX512)
 
     // ----------------------------------------------------------------------------
     // encode_block_avx512
     // ----------------------------------------------------------------------------
 
-    /*
-    // NOTE: parallel symbol size computation prototype
-    // NOTE: try this with AVX512 - 128 bit wide is +- same performance as scalar (sparse input)
+//#define PROTOTYPE_PARALLEL_COEFFICIENTS
+#ifdef PROTOTYPE_PARALLEL_COEFFICIENTS
 
-    inline __m128i getSymbolSize(__m128i absCoeff)
+    static
+    inline __m512i getSymbolSize(__m512i absCoeff)
     {
-        int16x8 value(absCoeff);
-        int16x8 base(0);
-        int16x8 temp;
-        mask16x8 mask;
+        int16x32 value(absCoeff);
+        int16x32 base(0);
+        int16x32 temp;
+        mask16x32 mask;
 
         temp = value & 0xff00;
         mask = temp != 0;
@@ -1539,21 +1392,24 @@ namespace
         return base;
     }
 
-    inline __m128i absSymbolSize(__m128i* ptr_sz, __m128i coeff)
+    static
+    inline __m512i absSymbolSize(__m512i* ptr_sz, __m512i coeff)
     {
-        __m128i absCoeff = _mm_abs_epi16(coeff);
-        __m128i mask = _mm_cmpeq_epi16(absCoeff, coeff);
-        mask = _mm_xor_si128(mask, _mm_cmpeq_epi8(mask, mask)); // not
-        coeff = _mm_add_epi16(coeff, mask);
+        __m512i absCoeff = _mm512_abs_epi16(coeff);
 
-        __m128 sz = getSymbolSize(absCoeff);
-        _mm_storeu_si128(ptr_sz, sz);
+        __m512i one = _mm512_set1_epi16(1);
+        __mmask32 mask = ~_mm512_cmpeq_epi16_mask(absCoeff, coeff);
+        coeff = _mm512_mask_sub_epi16(coeff, mask, coeff, one);
+
+        __m512i sz = getSymbolSize(absCoeff);
+        _mm512_storeu_si512(ptr_sz, sz);
 
         return coeff;
     }
-    */
 
-    u64 zigzag_avx512bw(const s16* in, s16* out)
+#endif // PROTOTYPE_PARALLEL_COEFFICIENTS
+
+    u64 zigzag_avx512bw(s16* out, const s16* in)
     {
         static const u16 zigzag_shuffle [] =
         {
@@ -1581,17 +1437,12 @@ namespace
         const __m512i zero = _mm512_setzero_si512();
         __mmask32 mask_lo = _mm512_cmpneq_epu16_mask(v0, zero);
         __mmask32 mask_hi = _mm512_cmpneq_epu16_mask(v1, zero);
-        u64 zeromask = mask_lo;
+        u64 zeromask = (u64(mask_hi) << 32) | mask_lo;
 
         __m512i* dest = reinterpret_cast<__m512i *>(out);
 
         _mm512_storeu_si512(dest + 0, v0);
-
-        if (!mask_hi)
-        {
-            zeromask |= (u64(mask_hi) << 32);
-            _mm512_storeu_si512(dest + 1, v1);
-        }
+        _mm512_storeu_si512(dest + 1, v1);
 
         return zeromask;
     }
@@ -1603,7 +1454,208 @@ namespace
         encoder.fdct(block, input, channel.qtable);
 
         s16 temp[64];
-        u64 zeromask = zigzag_avx512bw(block, temp);
+        u64 zeromask = zigzag_avx512bw(temp, block);
+
+        p = encode_dc(encoder, p, temp[0], channel);
+        zeromask >>= 1;
+
+        const u32* ac_code = channel.ac_code;
+        const u16* ac_size = channel.ac_size;
+        const u32 zero16_code = ac_code[1];
+        const u32 zero16_size = ac_size[1];
+
+#ifdef PROTOTYPE_PARALLEL_COEFFICIENTS
+        s16 s_coeff[64];
+        s16 s_size[64];
+        __m512i c0 = *(__m512i*)(temp + 0);
+        __m512i c1 = *(__m512i*)(temp + 32);
+        c0 = absSymbolSize( (__m512i*)(s_size + 0), c0);
+        c1 = absSymbolSize( (__m512i*)(s_size + 32), c1);
+        *(__m512i*)(s_coeff + 0) = c0;
+        *(__m512i*)(s_coeff + 32) = c1;
+#endif
+
+        for (int i = 1; i < 64; ++i)
+        {
+            if (!zeromask)
+            {
+                // only zeros left
+                p = encoder.putBits(p, ac_code[0], ac_size[0]);
+                break;
+            }
+
+            int counter = u64_tzcnt(zeromask); // BMI
+            zeromask >>= (counter + 1);
+            i += counter;
+
+            while (counter > 15)
+            {
+                counter -= 16;
+                p = encoder.putBits(p, zero16_code, zero16_size);
+            }
+
+#ifdef PROTOTYPE_PARALLEL_COEFFICIENTS
+            int coeff = s_coeff[i];
+            u32 size = s_size[i];
+            u32 mask = (1 << size) - 1;
+#else
+            int coeff = temp[i];
+            int absCoeff = std::abs(coeff);
+            coeff -= (absCoeff != coeff);
+
+            u32 size = u32_log2(absCoeff) + 1;
+            u32 mask = (1 << size) - 1;
+#endif
+
+            int index = counter + size * 16;
+            p = encoder.putBits(p, ac_code[index] | (coeff & mask), ac_size[index]);
+        }
+
+        return p;
+    }
+
+#endif // defined(MANGO_ENABLE_AVX512)
+
+#if defined(MANGO_ENABLE_NEON64)
+
+    // ----------------------------------------------------------------------------
+    // encode_block_neon
+    // ----------------------------------------------------------------------------
+
+#if defined(MANGO_COMPILER_GCC)
+
+    static inline
+    uint8x16x4_t jpeg_vld1q_u8_x4(const u8* p)
+    {
+        uint8x16x4_t result;
+        result.val[0] = vld1q_u8(p +  0);
+        result.val[1] = vld1q_u8(p + 16);
+        result.val[2] = vld1q_u8(p + 32);
+        result.val[3] = vld1q_u8(p + 48);
+        return result;
+    }
+
+    static inline
+    int8x16x4_t jpeg_vld1q_s8_x4(const s8* p)
+    {
+        int8x16x4_t result;
+        result.val[0] = vld1q_s8(p +  0);
+        result.val[1] = vld1q_s8(p + 16);
+        result.val[2] = vld1q_s8(p + 32);
+        result.val[3] = vld1q_s8(p + 48);
+        return result;
+    }
+
+#else
+
+    static inline
+    uint8x16x4_t jpeg_vld1q_u8_x4(const u8 *p)
+    {
+        return vld1q_u8_x4(p);
+    }
+
+    static inline
+    int8x16x4_t jpeg_vld1q_s8_x4(const s8 *p)
+    {
+        return vld1q_s8_x4(p);
+    }
+
+#endif // MANGO_COMPILER_GCC
+
+    u64 zigzag_neon64(s16* out, const s16* in)
+    {
+
+#define ID(x) x * 2 + 0, x * 2 + 1
+#define ID_255 255, 255
+
+        const u8 zigzag_shuffle [] =
+        {
+            ID( 0), ID( 1), ID( 8), ID(16), ID(9),  ID( 2), ID( 3), ID(10),
+            ID(17), ID(24), ID_255, ID(25), ID(18), ID(11), ID( 4), ID( 5),
+            ID_255, ID( 3), ID(10), ID(17), ID(24), ID_255, ID(25), ID(18),
+            ID(27), ID(20), ID(13), ID( 6), ID( 7), ID(14), ID(21), ID(28),
+            ID( 3), ID(10), ID(17), ID(24), ID(25), ID(18), ID(11), ID( 4),
+            ID(13), ID( 6), ID_255, ID( 7), ID(14), ID(21), ID(28), ID_255,
+            ID(26), ID(27), ID(20), ID(13), ID( 6), ID_255, ID(7),  ID(14),
+            ID(13), ID(20), ID(21), ID(14), ID( 7), ID(15), ID(22), ID(23),
+        };
+
+#undef ID
+#undef ID_255
+
+        const uint8x16x4_t idx_rows_0123 = jpeg_vld1q_u8_x4(zigzag_shuffle + 0 * 8);
+        const uint8x16x4_t idx_rows_4567 = jpeg_vld1q_u8_x4(zigzag_shuffle + 8 * 8);
+
+        const int8x16x4_t tbl_rows_0123 = jpeg_vld1q_s8_x4((s8 *)(in + 0 * 8));
+        const int8x16x4_t tbl_rows_4567 = jpeg_vld1q_s8_x4((s8 *)(in + 4 * 8));
+
+        const int8x16x4_t tbl_rows_2345 =
+        {{
+            tbl_rows_0123.val[2], tbl_rows_0123.val[3],
+            tbl_rows_4567.val[0], tbl_rows_4567.val[1]
+        }};
+        const int8x16x3_t tbl_rows_567 = {{ tbl_rows_4567.val[1], tbl_rows_4567.val[2], tbl_rows_4567.val[3] }};
+
+        // shuffle coefficients
+        int16x8_t row0 = vreinterpretq_s16_s8(vqtbl4q_s8(tbl_rows_0123, idx_rows_0123.val[0]));
+        int16x8_t row1 = vreinterpretq_s16_s8(vqtbl4q_s8(tbl_rows_0123, idx_rows_0123.val[1]));
+        int16x8_t row2 = vreinterpretq_s16_s8(vqtbl4q_s8(tbl_rows_2345, idx_rows_0123.val[2]));
+        int16x8_t row3 = vreinterpretq_s16_s8(vqtbl4q_s8(tbl_rows_0123, idx_rows_0123.val[3]));
+        int16x8_t row4 = vreinterpretq_s16_s8(vqtbl4q_s8(tbl_rows_4567, idx_rows_4567.val[0]));
+        int16x8_t row5 = vreinterpretq_s16_s8(vqtbl4q_s8(tbl_rows_2345, idx_rows_4567.val[1]));
+        int16x8_t row6 = vreinterpretq_s16_s8(vqtbl4q_s8(tbl_rows_4567, idx_rows_4567.val[2]));
+        int16x8_t row7 = vreinterpretq_s16_s8(vqtbl3q_s8(tbl_rows_567, idx_rows_4567.val[3]));
+
+        // patch "holes" left in the shuffle table (ID_255)
+        row1 = vsetq_lane_s16(vgetq_lane_s16(vreinterpretq_s16_s8(tbl_rows_4567.val[0]), 0), row1, 2);
+        row2 = vsetq_lane_s16(vgetq_lane_s16(vreinterpretq_s16_s8(tbl_rows_0123.val[1]), 4), row2, 0);
+        row2 = vsetq_lane_s16(vgetq_lane_s16(vreinterpretq_s16_s8(tbl_rows_4567.val[2]), 0), row2, 5);
+        row5 = vsetq_lane_s16(vgetq_lane_s16(vreinterpretq_s16_s8(tbl_rows_0123.val[1]), 7), row5, 2);
+        row5 = vsetq_lane_s16(vgetq_lane_s16(vreinterpretq_s16_s8(tbl_rows_4567.val[2]), 3), row5, 7);
+        row6 = vsetq_lane_s16(vgetq_lane_s16(vreinterpretq_s16_s8(tbl_rows_0123.val[3]), 7), row6, 5);
+
+        // zeromask
+        const uint16x8_t zero = vdupq_n_u16(0);
+        uint8x8_t gt0 = vmovn_u16(vcgtq_u16(vreinterpretq_u16_s16(row0), zero));
+        uint8x8_t gt1 = vmovn_u16(vcgtq_u16(vreinterpretq_u16_s16(row1), zero));
+        uint8x8_t gt2 = vmovn_u16(vcgtq_u16(vreinterpretq_u16_s16(row2), zero));
+        uint8x8_t gt3 = vmovn_u16(vcgtq_u16(vreinterpretq_u16_s16(row3), zero));
+        uint8x8_t gt4 = vmovn_u16(vcgtq_u16(vreinterpretq_u16_s16(row4), zero));
+        uint8x8_t gt5 = vmovn_u16(vcgtq_u16(vreinterpretq_u16_s16(row5), zero));
+        uint8x8_t gt6 = vmovn_u16(vcgtq_u16(vreinterpretq_u16_s16(row6), zero));
+        uint8x8_t gt7 = vmovn_u16(vcgtq_u16(vreinterpretq_u16_s16(row7), zero));
+
+        const uint8x16_t mask = { 1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128 };
+        uint8x16_t gt01 = vandq_u8(vcombine_u8(gt0, gt1), mask);
+        uint8x16_t gt23 = vandq_u8(vcombine_u8(gt2, gt3), mask);
+        uint8x16_t gt45 = vandq_u8(vcombine_u8(gt4, gt5), mask);
+        uint8x16_t gt67 = vandq_u8(vcombine_u8(gt6, gt7), mask);
+        uint8x16_t gt0123 = vpaddq_u8(gt01, gt23);
+        uint8x16_t gt4567 = vpaddq_u8(gt45, gt67);
+        uint8x16_t gt01234567 = vpaddq_u8(gt0123, gt4567);
+        uint8x16_t x = vpaddq_u8(gt01234567, gt01234567);
+        u64 zeromask = vgetq_lane_u64(vreinterpretq_u64_u8(x), 0);
+
+        vst1q_s16(out + 0 * 8, row0);
+        vst1q_s16(out + 1 * 8, row1);
+        vst1q_s16(out + 2 * 8, row2);
+        vst1q_s16(out + 3 * 8, row3);
+        vst1q_s16(out + 4 * 8, row4);
+        vst1q_s16(out + 5 * 8, row5);
+        vst1q_s16(out + 6 * 8, row6);
+        vst1q_s16(out + 7 * 8, row7);
+
+        return zeromask;
+    }
+
+    static
+    u8* encode_block_neon64(HuffmanEncoder& encoder, u8* p, const s16* input, const jpegEncoder::Channel& channel)
+    {
+        s16 block[64];
+        encoder.fdct(block, input, channel.qtable);
+
+        s16 temp[64];
+        u64 zeromask = zigzag_neon64(temp, block);
 
         p = encode_dc(encoder, p, temp[0], channel);
         zeromask >>= 1;
@@ -1622,7 +1674,7 @@ namespace
                 break;
             }
 
-            int counter = u64_tzcnt(zeromask); // BMI
+            int counter = u64_tzcnt(zeromask);
             zeromask >>= (counter + 1);
             i += counter;
 
@@ -1646,245 +1698,249 @@ namespace
         return p;
     }
 
-#endif // defined(JPEG_ENABLE_AVX512)
-#endif // defined(JPEG_ENABLE_AVX2)
-#endif // defined(JPEG_ENABLE_SSE4)
-
-#if defined(JPEG_ENABLE_NEON__todo)
-
-    // ----------------------------------------------------------------------------
-    // encode_block_neon
-    // ----------------------------------------------------------------------------
-
-    static
-    u8* encode_block_neon(HuffmanEncoder& encoder, u8* p, const s16* input, const jpegEncoder::Channel& channel)
-    {
-        // TODO
-    }
-
-#endif // defined(JPEG_ENABLE_NEON)
+#endif // defined(MANGO_ENABLE_NEON64)
 
     // ----------------------------------------------------------------------------
     // read_xxx_format
     // ----------------------------------------------------------------------------
 
     static
+    void compute_ycbcr(s16* dest, int r, int g, int b)
+    {
+        int y = (76 * r + 151 * g + 29 * b) >> 8;
+        int cr = ((r - y) * 182) >> 8;
+        int cb = ((b - y) * 144) >> 8;
+        dest[0 * 64] = s16(y - 128);
+        dest[1 * 64] = s16(cb);
+        dest[2 * 64] = s16(cr);
+    }
+
+    static
     void read_y_format(s16* block, const u8* input, size_t stride, int rows, int cols)
     {
-        for (int i = 0; i < rows; ++i)
+        for (int y = 0; y < rows; ++y)
         {
-            const u8* scan = input;
-            for (int j = cols; j > 0; --j)
+            for (int x = 0; x < cols; ++x)
             {
-                *block++ = (*scan++) - 128;
+                *block++ = input[x] - 128;
             }
 
             // replicate last column
-            for (int j = 8 - cols; j > 0; --j)
+            if (cols < 8)
             {
-                *block = *(block - 1);
-                ++block;
+                const int count = 8 - cols;
+                std::fill_n(block, count, block[-1]);
+                block += count;
             }
 
             input += stride;
         }
 
         // replicate last row
-        for (int i = 8 - rows; i > 0; --i)
+        for (int y = rows; y < 8; ++y)
         {
-            for (int j = 8; j > 0; --j)
-            {
-                *block = *(block - 8);
-                ++block;
-            }
+            std::memcpy(block, block - 8, 16);
+            block += 8;
         }
     }
 
     static
     void read_bgr_format(s16* block, const u8* input, size_t stride, int rows, int cols)
     {
-        for (int i = 0; i < rows; ++i)
+        for (int y = 0; y < rows; ++y)
         {
             const u8* scan = input;
-            for (int j = 0; j < cols; ++j)
+
+            for (int x = 0; x < cols; ++x)
             {
                 int r = scan[2];
                 int g = scan[1];
                 int b = scan[0];
-                int y = (76 * r + 151 * g + 29 * b) >> 8;
-                int cr = ((r - y) * 182) >> 8;
-                int cb = ((b - y) * 144) >> 8;
-                block[0 * 64] = s16(y - 128);
-                block[1 * 64] = s16(cb);
-                block[2 * 64] = s16(cr);
+                compute_ycbcr(block, r, g, b);
                 ++block;
                 scan += 3;
             }
 
             // replicate last column
-            for (int j = 8 - cols; j > 0; --j)
+            if (cols < 8)
             {
-                block[0 * 64] = block[0 * 64 - 1];
-                block[1 * 64] = block[1 * 64 - 1];
-                block[2 * 64] = block[2 * 64 - 1];
-                ++block;
+                const int count = 8 - cols;
+                std::fill_n(block + 0 * 64, count, block[0 * 64 - 1]);
+                std::fill_n(block + 1 * 64, count, block[1 * 64 - 1]);
+                std::fill_n(block + 2 * 64, count, block[2 * 64 - 1]);
+                block += count;
             }
 
             input += stride;
-
         }
+
         // replicate last row
-        for (int i = 8 - rows; i > 0; --i)
+        for (int y = rows; y < 8; ++y)
         {
-            for (int j = 8; j > 0; --j)
-            {
-                block[0 * 64] = block[0 * 64 - 8];
-                block[1 * 64] = block[1 * 64 - 8];
-                block[2 * 64] = block[2 * 64 - 8];
-                ++block;
-            }
+            std::memcpy(block + 0 * 64, block + 0 * 64 - 8, 16);
+            std::memcpy(block + 1 * 64, block + 1 * 64 - 8, 16);
+            std::memcpy(block + 2 * 64, block + 2 * 64 - 8, 16);
+            block += 8;
         }
     }
 
     static
     void read_rgb_format(s16* block, const u8* input, size_t stride, int rows, int cols)
     {
-        for (int i = 0; i < rows; ++i)
+        for (int y = 0; y < rows; ++y)
         {
             const u8* scan = input;
-            for (int j = 0; j < cols; ++j)
+            for (int x = 0; x < cols; ++x)
             {
                 int r = scan[0];
                 int g = scan[1];
                 int b = scan[2];
-                int y = (76 * r + 151 * g + 29 * b) >> 8;
-                int cr = ((r - y) * 182) >> 8;
-                int cb = ((b - y) * 144) >> 8;
-                block[0 * 64] = s16(y - 128);
-                block[1 * 64] = s16(cb);
-                block[2 * 64] = s16(cr);
+                compute_ycbcr(block, r, g, b);
                 ++block;
                 scan += 3;
             }
 
             // replicate last column
-            for (int j = 8 - cols; j > 0; --j)
+            if (cols < 8)
             {
-                block[0 * 64] = block[0 * 64 - 1];
-                block[1 * 64] = block[1 * 64 - 1];
-                block[2 * 64] = block[2 * 64 - 1];
-                ++block;
+                const int count = 8 - cols;
+                std::fill_n(block + 0 * 64, count, block[0 * 64 - 1]);
+                std::fill_n(block + 1 * 64, count, block[1 * 64 - 1]);
+                std::fill_n(block + 2 * 64, count, block[2 * 64 - 1]);
+                block += count;
             }
 
             input += stride;
         }
 
         // replicate last row
-        for (int i = 8 - rows; i > 0; --i)
+        for (int y = rows; y < 8; ++y)
         {
-            for (int j = 8; j > 0; --j)
-            {
-                block[0 * 64] = block[0 * 64 - 8];
-                block[1 * 64] = block[1 * 64 - 8];
-                block[2 * 64] = block[2 * 64 - 8];
-                ++block;
-            }
+            std::memcpy(block + 0 * 64, block + 0 * 64 - 8, 16);
+            std::memcpy(block + 1 * 64, block + 1 * 64 - 8, 16);
+            std::memcpy(block + 2 * 64, block + 2 * 64 - 8, 16);
+            block += 8;
         }
     }
 
     static
     void read_bgra_format(s16* block, const u8* input, size_t stride, int rows, int cols)
     {
-        for (int i = 0; i < rows; ++i)
+        for (int y = 0; y < rows; ++y)
         {
             const u8* scan = input;
-            for (int j = 0; j < cols; ++j)
+            for (int x = 0; x < cols; ++x)
             {
                 s16 r = scan[2];
                 s16 g = scan[1];
                 s16 b = scan[0];
-                s16 y = (76 * r + 151 * g + 29 * b) >> 8;
-                s16 cr = ((r - y) * 182) >> 8;
-                s16 cb = ((b - y) * 144) >> 8;
-                block[0 * 64] = s16(y - 128);
-                block[1 * 64] = s16(cb);
-                block[2 * 64] = s16(cr);
+                compute_ycbcr(block, r, g, b);
                 ++block;
                 scan += 4;
             }
 
             // replicate last column
-            for (int j = 8 - cols; j > 0; --j)
+            if (cols < 8)
             {
-                block[0 * 64] = block[0 * 64 - 1];
-                block[1 * 64] = block[1 * 64 - 1];
-                block[2 * 64] = block[2 * 64 - 1];
-                ++block;
+                const int count = 8 - cols;
+                std::fill_n(block + 0 * 64, count, block[0 * 64 - 1]);
+                std::fill_n(block + 1 * 64, count, block[1 * 64 - 1]);
+                std::fill_n(block + 2 * 64, count, block[2 * 64 - 1]);
+                block += count;
             }
 
             input += stride;
         }
 
         // replicate last row
-        for (int i = 8 - rows; i > 0; --i)
+        for (int y = rows; y < 8; ++y)
         {
-            for (int j = 8; j > 0; --j)
-            {
-                block[0 * 64] = block[0 * 64 - 8];
-                block[1 * 64] = block[1 * 64 - 8];
-                block[2 * 64] = block[2 * 64 - 8];
-                ++block;
-            }
+            std::memcpy(block + 0 * 64, block + 0 * 64 - 8, 16);
+            std::memcpy(block + 1 * 64, block + 1 * 64 - 8, 16);
+            std::memcpy(block + 2 * 64, block + 2 * 64 - 8, 16);
+            block += 8;
         }
     }
 
     static
     void read_rgba_format(s16* block, const u8* input, size_t stride, int rows, int cols)
     {
-        for (int i = 0; i < rows; ++i)
+        for (int y = 0; y < rows; ++y)
         {
             const u8* scan = input;
-            for (int j = 0; j < cols; ++j)
+            for (int x = 0; x < cols; ++x)
             {
                 int r = scan[0];
                 int g = scan[1];
                 int b = scan[2];
-                int y = (76 * r + 151 * g + 29 * b) >> 8;
-                int cr = ((r - y) * 182) >> 8;
-                int cb = ((b - y) * 144) >> 8;
-                block[0 * 64] = s16(y - 128);
-                block[1 * 64] = s16(cb);
-                block[2 * 64] = s16(cr);
+                compute_ycbcr(block, r, g, b);
                 ++block;
                 scan += 4;
             }
 
             // replicate last column
-            for (int j = 8 - cols; j > 0; --j)
+            if (cols < 8)
             {
-                block[0 * 64] = block[0 * 64 - 1];
-                block[1 * 64] = block[1 * 64 - 1];
-                block[2 * 64] = block[2 * 64 - 1];
-                ++block;
+                const int count = 8 - cols;
+                std::fill_n(block + 0 * 64, count, block[0 * 64 - 1]);
+                std::fill_n(block + 1 * 64, count, block[1 * 64 - 1]);
+                std::fill_n(block + 2 * 64, count, block[2 * 64 - 1]);
+                block += count;
             }
 
             input += stride;
         }
 
         // replicate last row
-        for (int i = 8 - rows; i > 0; --i)
+        for (int y = rows; y < 8; ++y)
         {
-            for (int j = 8; j > 0; --j)
-            {
-                block[0 * 64] = block[0 * 64 - 8];
-                block[1 * 64] = block[1 * 64 - 8];
-                block[2 * 64] = block[2 * 64 - 8];
-                ++block;
-            }
+            std::memcpy(block + 0 * 64, block + 0 * 64 - 8, 16);
+            std::memcpy(block + 1 * 64, block + 1 * 64 - 8, 16);
+            std::memcpy(block + 2 * 64, block + 2 * 64 - 8, 16);
+            block += 8;
         }
     }
 
-#if defined(JPEG_ENABLE_SSE2)
+#if defined(MANGO_ENABLE_SSE2) || defined(MANGO_ENABLE_SSE4_1)
+
+    static
+    void compute_ycbcr(s16* dest, __m128i r, __m128i g, __m128i b)
+    {
+        const __m128i c076 = _mm_set1_epi16(76);
+        const __m128i c151 = _mm_set1_epi16(151);
+        const __m128i c029 = _mm_set1_epi16(29);
+        const __m128i c128 = _mm_set1_epi16(128);
+        const __m128i c182 = _mm_set1_epi16(182);
+        const __m128i c144 = _mm_set1_epi16(144);
+
+        // compute luminance
+        __m128i s0 = _mm_mullo_epi16(r, c076);
+        __m128i s1 = _mm_mullo_epi16(g, c151);
+        __m128i s2 = _mm_mullo_epi16(b, c029);
+        __m128i s = _mm_add_epi16(s0, _mm_add_epi16(s1, s2));
+        s = _mm_srli_epi16(s, 8);
+
+        // compute chroma
+        __m128i cr = _mm_sub_epi16(r, s);
+        __m128i cb = _mm_sub_epi16(b, s);
+        cr = _mm_mullo_epi16(cr, c182);
+        cb = _mm_mullo_epi16(cb, c144);
+        cr = _mm_srai_epi16(cr, 8);
+        cb = _mm_srai_epi16(cb, 8);
+
+        // adjust bias
+        s = _mm_sub_epi16(s, c128);
+
+        // store
+        __m128i* ptr = reinterpret_cast<__m128i*>(dest);
+        _mm_storeu_si128(ptr +  0, s);
+        _mm_storeu_si128(ptr +  8, cb);
+        _mm_storeu_si128(ptr + 16, cr);
+    }
+
+#endif // defined(MANGO_ENABLE_SSE2) || defined(MANGO_ENABLE_SSE4_1)
+
+#if defined(MANGO_ENABLE_SSE2)
 
     static
     void read_y_format_sse2(s16* block, const u8* input, size_t stride, int rows, int cols)
@@ -1914,7 +1970,7 @@ namespace
         v7 = _mm_sub_epi8(v7, bias);
 
         // sign-extend
-#if defined(JPEG_ENABLE_SSE4)
+#if defined(MANGO_ENABLE_SSE4_1)
         v0 = _mm_cvtepi8_epi16(v0);
         v1 = _mm_cvtepi8_epi16(v1);
         v2 = _mm_cvtepi8_epi16(v2);
@@ -1953,22 +2009,12 @@ namespace
         MANGO_UNREFERENCED(rows);
         MANGO_UNREFERENCED(cols);
 
-        __m128i* dest = reinterpret_cast<__m128i*>(block);
-
         const __m128i mask = _mm_set1_epi32(0xff);
-        const __m128i c76 = _mm_set1_epi16(76);
-        const __m128i c151 = _mm_set1_epi16(151);
-        const __m128i c29 = _mm_set1_epi16(29);
-        const __m128i c128 = _mm_set1_epi16(128);
-        const __m128i c182 = _mm_set1_epi16(182);
-        const __m128i c144 = _mm_set1_epi16(144);
 
         for (int y = 0; y < 8; ++y)
         {
             const __m128i* ptr = reinterpret_cast<const __m128i*>(input);
-            input += stride;
 
-            // load, unpack
             __m128i b0 = _mm_loadu_si128(ptr + 0);
             __m128i b1 = _mm_loadu_si128(ptr + 1);
             __m128i g0 = _mm_srli_epi32(b0, 8);
@@ -1985,28 +2031,10 @@ namespace
             __m128i g = _mm_packs_epi32(g0, g1);
             __m128i r = _mm_packs_epi32(r0, r1);
 
-            // compute luminance
-            __m128i s0 = _mm_mullo_epi16(r, c76);
-            __m128i s1 = _mm_mullo_epi16(g, c151);
-            __m128i s2 = _mm_mullo_epi16(b, c29);
-            __m128i s = _mm_add_epi16(s0, _mm_add_epi16(s1, s2));
-            s = _mm_srli_epi16(s, 8);
+            compute_ycbcr(block, r, g, b);
 
-            // compute chroma
-            __m128i cr = _mm_sub_epi16(r, s);
-            __m128i cb = _mm_sub_epi16(b, s);
-            cr = _mm_mullo_epi16(cr, c182);
-            cb = _mm_mullo_epi16(cb, c144);
-            cr = _mm_srai_epi16(cr, 8);
-            cb = _mm_srai_epi16(cb, 8);
-
-            // adjust bias
-            s = _mm_sub_epi16(s, c128);
-
-            // store
-            _mm_storeu_si128(dest + y + 0, s);
-            _mm_storeu_si128(dest + y + 8, cb);
-            _mm_storeu_si128(dest + y + 16, cr);
+            block += 8;
+            input += stride;
         }
     }
 
@@ -2016,22 +2044,12 @@ namespace
         MANGO_UNREFERENCED(rows);
         MANGO_UNREFERENCED(cols);
 
-        __m128i* dest = reinterpret_cast<__m128i*>(block);
-
         const __m128i mask = _mm_set1_epi32(0xff);
-        const __m128i c76 = _mm_set1_epi16(76);
-        const __m128i c151 = _mm_set1_epi16(151);
-        const __m128i c29 = _mm_set1_epi16(29);
-        const __m128i c128 = _mm_set1_epi16(128);
-        const __m128i c182 = _mm_set1_epi16(182);
-        const __m128i c144 = _mm_set1_epi16(144);
 
         for (int y = 0; y < 8; ++y)
         {
             const __m128i* ptr = reinterpret_cast<const __m128i*>(input);
-            input += stride;
 
-            // load, unpack
             __m128i r0 = _mm_loadu_si128(ptr + 0);
             __m128i r1 = _mm_loadu_si128(ptr + 1);
             __m128i g0 = _mm_srli_epi32(r0, 8);
@@ -2048,34 +2066,16 @@ namespace
             __m128i g = _mm_packs_epi32(g0, g1);
             __m128i r = _mm_packs_epi32(r0, r1);
 
-            // compute luminance
-            __m128i s0 = _mm_mullo_epi16(r, c76);
-            __m128i s1 = _mm_mullo_epi16(g, c151);
-            __m128i s2 = _mm_mullo_epi16(b, c29);
-            __m128i s = _mm_add_epi16(s0, _mm_add_epi16(s1, s2));
-            s = _mm_srli_epi16(s, 8);
+            compute_ycbcr(block, r, g, b);
 
-            // compute chroma
-            __m128i cr = _mm_sub_epi16(r, s);
-            __m128i cb = _mm_sub_epi16(b, s);
-            cr = _mm_mullo_epi16(cr, c182);
-            cb = _mm_mullo_epi16(cb, c144);
-            cr = _mm_srai_epi16(cr, 8);
-            cb = _mm_srai_epi16(cb, 8);
-
-            // adjust bias
-            s = _mm_sub_epi16(s, c128);
-
-            // store
-            _mm_storeu_si128(dest + y + 0, s);
-            _mm_storeu_si128(dest + y + 8, cb);
-            _mm_storeu_si128(dest + y + 16, cr);
+            block += 8;
+            input += stride;
         }
     }
 
-#endif // JPEG_ENABLE_SSE2
+#endif // MANGO_ENABLE_SSE2
 
-#if defined(JPEG_ENABLE_SSE4)
+#if defined(MANGO_ENABLE_SSE4_1)
 
     static
     void read_bgr_format_ssse3(s16* block, const u8* input, size_t stride, int rows, int cols)
@@ -2083,19 +2083,9 @@ namespace
         MANGO_UNREFERENCED(rows);
         MANGO_UNREFERENCED(cols);
 
-        __m128i* dest = reinterpret_cast<__m128i*>(block);
-
-        const __m128i c76 = _mm_set1_epi16(76);
-        const __m128i c151 = _mm_set1_epi16(151);
-        const __m128i c29 = _mm_set1_epi16(29);
-        const __m128i c128 = _mm_set1_epi16(128);
-        const __m128i c182 = _mm_set1_epi16(182);
-        const __m128i c144 = _mm_set1_epi16(144);
-
         for (int y = 0; y < 8; ++y)
         {
             const __m128i* ptr = reinterpret_cast<const __m128i*>(input);
-            input += stride;
 
             // load
             __m128i v0 = _mm_loadu_si128(ptr + 0);
@@ -2113,28 +2103,10 @@ namespace
            __m128i g = _mm_or_si128(g0, g1);
            __m128i r = _mm_or_si128(r0, r1);
 
-            // compute luminance
-            __m128i s0 = _mm_mullo_epi16(r, c76);
-            __m128i s1 = _mm_mullo_epi16(g, c151);
-            __m128i s2 = _mm_mullo_epi16(b, c29);
-            __m128i s = _mm_add_epi16(s0, _mm_add_epi16(s1, s2));
-            s = _mm_srli_epi16(s, 8);
+            compute_ycbcr(block, r, g, b);
 
-            // compute chroma
-            __m128i cr = _mm_sub_epi16(r, s);
-            __m128i cb = _mm_sub_epi16(b, s);
-            cr = _mm_mullo_epi16(cr, c182);
-            cb = _mm_mullo_epi16(cb, c144);
-            cr = _mm_srai_epi16(cr, 8);
-            cb = _mm_srai_epi16(cb, 8);
-
-            // adjust bias
-            s = _mm_sub_epi16(s, c128);
-
-            // store
-            _mm_storeu_si128(dest + y + 0, s);
-            _mm_storeu_si128(dest + y + 8, cb);
-            _mm_storeu_si128(dest + y + 16, cr);
+            block += 8;
+            input += stride;
         }
     }
 
@@ -2144,19 +2116,9 @@ namespace
         MANGO_UNREFERENCED(rows);
         MANGO_UNREFERENCED(cols);
 
-        __m128i* dest = reinterpret_cast<__m128i*>(block);
-
-        const __m128i c76 = _mm_set1_epi16(76);
-        const __m128i c151 = _mm_set1_epi16(151);
-        const __m128i c29 = _mm_set1_epi16(29);
-        const __m128i c128 = _mm_set1_epi16(128);
-        const __m128i c182 = _mm_set1_epi16(182);
-        const __m128i c144 = _mm_set1_epi16(144);
-
         for (int y = 0; y < 8; ++y)
         {
             const __m128i* ptr = reinterpret_cast<const __m128i*>(input);
-            input += stride;
 
             // load
             __m128i v0 = _mm_loadu_si128(ptr + 0);
@@ -2174,32 +2136,149 @@ namespace
            __m128i g = _mm_or_si128(g0, g1);
            __m128i r = _mm_or_si128(r0, r1);
 
-            // compute luminance
-            __m128i s0 = _mm_mullo_epi16(r, c76);
-            __m128i s1 = _mm_mullo_epi16(g, c151);
-            __m128i s2 = _mm_mullo_epi16(b, c29);
-            __m128i s = _mm_add_epi16(s0, _mm_add_epi16(s1, s2));
-            s = _mm_srli_epi16(s, 8);
+            compute_ycbcr(block, r, g, b);
 
-            // compute chroma
-            __m128i cr = _mm_sub_epi16(r, s);
-            __m128i cb = _mm_sub_epi16(b, s);
-            cr = _mm_mullo_epi16(cr, c182);
-            cb = _mm_mullo_epi16(cb, c144);
-            cr = _mm_srai_epi16(cr, 8);
-            cb = _mm_srai_epi16(cb, 8);
-
-            // adjust bias
-            s = _mm_sub_epi16(s, c128);
-
-            // store
-            _mm_storeu_si128(dest + y + 0, s);
-            _mm_storeu_si128(dest + y + 8, cb);
-            _mm_storeu_si128(dest + y + 16, cr);
+            block += 8;
+            input += stride;
         }
     }
 
-#endif // JPEG_ENABLE_SSE4
+#endif // MANGO_ENABLE_SSE4_1
+
+#if defined(MANGO_ENABLE_NEON)
+
+    static
+    void compute_ycbcr(s16* dest, int16x8_t r, int16x8_t g, int16x8_t b)
+    {
+        const int16x8_t c076 = vdupq_n_s16(76);
+        const int16x8_t c151 = vdupq_n_s16(151);
+        const int16x8_t c029 = vdupq_n_s16(29);
+        const int16x8_t c182 = vdupq_n_s16(182);
+        const int16x8_t c144 = vdupq_n_s16(144);
+        const int16x8_t c128 = vdupq_n_s16(128);
+
+        // compute luminance
+        int16x8_t s = vmulq_s16(r, c076);
+        s = vmlaq_s16(s, g, c151);
+        s = vmlaq_s16(s, b, c029);
+        s = vreinterpretq_s16_u16(vshrq_n_u16(vreinterpretq_u16_s16(s), 8));
+
+        // compute chroma
+        int16x8_t cr = vmulq_s16(vsubq_s16(r, s), c182);
+        int16x8_t cb = vmulq_s16(vsubq_s16(b, s), c144);
+        cr = vshrq_n_s16(cr, 8);
+        cb = vshrq_n_s16(cb, 8);
+
+        // adjust bias
+        s = vsubq_s16(s, c128);
+
+        // store
+        vst1q_s16(dest +   0, s);
+        vst1q_s16(dest +  64, cb);
+        vst1q_s16(dest + 128, cr);
+    }
+
+    static
+    void read_y_format_neon(s16* block, const u8* input, size_t stride, int rows, int cols)
+    {
+        MANGO_UNREFERENCED(rows);
+        MANGO_UNREFERENCED(cols);
+
+        const int16x8_t c128 = vdupq_n_s16(128);
+
+        for (int y = 0; y < 8; ++y)
+        {
+            uint8x8_t v = vld1_u8(input);
+            int16x8_t s = vreinterpretq_s16_u16(vmovl_u8(v));
+            s = vsubq_s16(s, c128);
+            vst1q_s16(block, s);
+
+            input += stride;
+            block += 8;
+        }
+    }
+
+    static
+    void read_bgra_format_neon(s16* block, const u8* input, size_t stride, int rows, int cols)
+    {
+        MANGO_UNREFERENCED(rows);
+        MANGO_UNREFERENCED(cols);
+
+        for (int y = 0; y < 8; ++y)
+        {
+            const uint8x8x4_t temp = vld4_u8(input);
+            int16x8_t r = vreinterpretq_s16_u16(vmovl_u8(temp.val[2]));
+            int16x8_t g = vreinterpretq_s16_u16(vmovl_u8(temp.val[1]));
+            int16x8_t b = vreinterpretq_s16_u16(vmovl_u8(temp.val[0]));
+
+            compute_ycbcr(block, r, g, b);
+
+            input += stride;
+            block += 8;
+        }
+    }
+
+    static
+    void read_rgba_format_neon(s16* block, const u8* input, size_t stride, int rows, int cols)
+    {
+        MANGO_UNREFERENCED(rows);
+        MANGO_UNREFERENCED(cols);
+
+        for (int y = 0; y < 8; ++y)
+        {
+            const uint8x8x4_t temp = vld4_u8(input);
+            int16x8_t r = vreinterpretq_s16_u16(vmovl_u8(temp.val[0]));
+            int16x8_t g = vreinterpretq_s16_u16(vmovl_u8(temp.val[1]));
+            int16x8_t b = vreinterpretq_s16_u16(vmovl_u8(temp.val[2]));
+
+            compute_ycbcr(block, r, g, b);
+
+            input += stride;
+            block += 8;
+        }
+    }
+
+    static
+    void read_bgr_format_neon(s16* block, const u8* input, size_t stride, int rows, int cols)
+    {
+        MANGO_UNREFERENCED(rows);
+        MANGO_UNREFERENCED(cols);
+
+        for (int y = 0; y < 8; ++y)
+        {
+            const uint8x8x3_t temp = vld3_u8(input);
+            int16x8_t r = vreinterpretq_s16_u16(vmovl_u8(temp.val[2]));
+            int16x8_t g = vreinterpretq_s16_u16(vmovl_u8(temp.val[1]));
+            int16x8_t b = vreinterpretq_s16_u16(vmovl_u8(temp.val[0]));
+
+            compute_ycbcr(block, r, g, b);
+
+            input += stride;
+            block += 8;
+        }
+    }
+
+    static
+    void read_rgb_format_neon(s16* block, const u8* input, size_t stride, int rows, int cols)
+    {
+        MANGO_UNREFERENCED(rows);
+        MANGO_UNREFERENCED(cols);
+
+        for (int y = 0; y < 8; ++y)
+        {
+            const uint8x8x3_t temp = vld3_u8(input);
+            int16x8_t r = vreinterpretq_s16_u16(vmovl_u8(temp.val[0]));
+            int16x8_t g = vreinterpretq_s16_u16(vmovl_u8(temp.val[1]));
+            int16x8_t b = vreinterpretq_s16_u16(vmovl_u8(temp.val[2]));
+
+            compute_ycbcr(block, r, g, b);
+
+            input += stride;
+            block += 8;
+        }
+    }
+
+#endif // MANGO_ENABLE_NEON
 
     // ----------------------------------------------------------------------------
     // jpegEncoder
@@ -2238,7 +2317,7 @@ namespace
         int bytes_per_pixel = 0;
         read_8x8 = nullptr;
 
-        u64 flags = getCPUFlags();
+        u64 flags = options.simd ? getCPUFlags() : 0;
         MANGO_UNREFERENCED(flags);
 
         // select sampler
@@ -2248,11 +2327,18 @@ namespace
         switch (sample)
         {
             case JPEG_U8_Y:
-#if defined(JPEG_ENABLE_SSE2)
+#if defined(MANGO_ENABLE_SSE2)
                 if (flags & INTEL_SSE2)
                 {
                     read_8x8 = read_y_format_sse2;
                     sampler_name = "SSE2 Y 8x8";
+                }
+#endif
+#if defined(MANGO_ENABLE_NEON)
+                if (flags & ARM_NEON)
+                {
+                    read_8x8 = read_y_format_neon;
+                    sampler_name = "NEON Y 8x8";
                 }
 #endif
                 read = read_y_format;
@@ -2261,11 +2347,18 @@ namespace
                 break;
 
             case JPEG_U8_BGR:
-#if defined(JPEG_ENABLE_SSE4)
+#if defined(MANGO_ENABLE_SSE4_1)
 				if (flags & INTEL_SSSE3)
                 {
                     read_8x8 = read_bgr_format_ssse3;
                     sampler_name = "SSSE3 BGR 8x8";
+                }
+#endif
+#if defined(MANGO_ENABLE_NEON)
+				if (flags & ARM_NEON)
+                {
+                    read_8x8 = read_bgr_format_neon;
+                    sampler_name = "NEON BGR 8x8";
                 }
 #endif
                 read = read_bgr_format;
@@ -2274,11 +2367,18 @@ namespace
                 break;
 
             case JPEG_U8_RGB:
-#if defined(JPEG_ENABLE_SSE4)
+#if defined(MANGO_ENABLE_SSE4_1)
                 if (flags & INTEL_SSSE3)
                 {
                     read_8x8 = read_rgb_format_ssse3;
                     sampler_name = "SSSE3 RGB 8x8";
+                }
+#endif
+#if defined(MANGO_ENABLE_NEON)
+                if (flags & ARM_NEON)
+                {
+                    read_8x8 = read_rgb_format_neon;
+                    sampler_name = "NEON RGB 8x8";
                 }
 #endif
                 read = read_rgb_format;
@@ -2287,11 +2387,18 @@ namespace
                 break;
 
             case JPEG_U8_BGRA:
-#if defined(JPEG_ENABLE_SSE2)
+#if defined(MANGO_ENABLE_SSE2)
                 if (flags & INTEL_SSE2)
                 {
                     read_8x8 = read_bgra_format_sse2;
                     sampler_name = "SSE2 BGRA 8x8";
+                }
+#endif
+#if defined(MANGO_ENABLE_NEON)
+                if (flags & ARM_NEON)
+                {
+                    read_8x8 = read_bgra_format_neon;
+                    sampler_name = "NEON BGRA 8x8";
                 }
 #endif
                 read = read_bgra_format;
@@ -2300,11 +2407,18 @@ namespace
                 break;
 
             case JPEG_U8_RGBA:
-#if defined(JPEG_ENABLE_SSE2)
+#if defined(MANGO_ENABLE_SSE2)
                 if (flags & INTEL_SSE2)
                 {
                     read_8x8 = read_rgba_format_sse2;
                     sampler_name = "SSE2 RGBA 8x8";
+                }
+#endif
+#if defined(MANGO_ENABLE_NEON)
+                if (flags & ARM_NEON)
+                {
+                    read_8x8 = read_rgba_format_neon;
+                    sampler_name = "NEON RGBA 8x8";
                 }
 #endif
                 read = read_rgba_format;
@@ -2315,6 +2429,7 @@ namespace
 
         if (!read_8x8)
         {
+            // no accelerated 8x8 sampler found; use the default
             read_8x8 = read;
         }
 
@@ -2323,7 +2438,7 @@ namespace
         fdct = fdct_scalar;
         const char* fdct_name = "Scalar";
 
-#if defined(JPEG_ENABLE_SSE2)
+#if defined(MANGO_ENABLE_SSE2)
         if (flags & INTEL_SSE2)
         {
             fdct = fdct_sse2;
@@ -2331,7 +2446,7 @@ namespace
         }
 #endif
 
-#if defined(JPEG_ENABLE_AVX2)
+#if defined(MANGO_ENABLE_AVX2__disabled)
         if (flags & INTEL_AVX2)
         {
             fdct = fdct_avx2;
@@ -2339,7 +2454,7 @@ namespace
         }
 #endif
 
-#if defined(JPEG_ENABLE_NEON)
+#if defined(MANGO_ENABLE_NEON)
         {
             fdct = fdct_neon;
             fdct_name = "NEON";
@@ -2351,7 +2466,7 @@ namespace
         encode = encode_block_scalar;
         const char* encode_name = "Scalar";
 
-#if defined(JPEG_ENABLE_SSE4)
+#if defined(MANGO_ENABLE_SSE4_1)
         if (flags & INTEL_SSSE3)
         {
             encode = encode_block_ssse3;
@@ -2359,15 +2474,7 @@ namespace
         }
 #endif
 
-#if defined(JPEG_ENABLE_AVX2)
-        if (flags & INTEL_AVX2)
-        {
-            encode = encode_block_avx2;
-            encode_name = "AVX2";
-        }
-#endif
-
-#if defined(JPEG_ENABLE_AVX512)
+#if defined(MANGO_ENABLE_AVX512)
         if (flags & INTEL_AVX512BW)
         {
             encode = encode_block_avx512bw;
@@ -2375,18 +2482,18 @@ namespace
         }
 #endif
 
-#if defined(JPEG_ENABLE_NEON__todo)
+#if defined(MANGO_ENABLE_NEON64)
         {
-            encode = encode_block_neon;
-            encode_name = "NEON";
+            encode = encode_block_neon64;
+            encode_name = "NEON64";
         }
 #endif
 
         // build encoder info string
-        info = "[JPEG Encoder] FDCT: ";
+        info = "fDCT: ";
         info += fdct_name;
 
-        info += ", Sampler: ";
+        info += ", Color: ";
         info += sampler_name;
 
         info += ", Encoder: ";
@@ -2546,110 +2653,143 @@ namespace
         p.write8(0x00);
     }
 
-    ImageEncodeStatus jpegEncoder::encodeImage(Stream& stream)
+    void jpegEncoder::encodeInterval(EncodeBuffer& buffer, const u8* image, size_t stride, ReadFunc read_func, int rows)
     {
-        const u8* input = m_surface.image;
-        size_t stride = m_surface.stride;
+        HuffmanEncoder huffman;
+        huffman.fdct = fdct;
 
-        // bitstream for each MCU scan
-        std::vector<EncodeBuffer> buffers(vertical_mcus);
+        const int right_mcu = horizontal_mcus - 1;
 
-        ConcurrentQueue queue;
+        constexpr int buffer_size = 2048;
+        constexpr int flush_threshold = buffer_size - 512;
 
-        // encode MCUs
-        for (int y = 0; y < vertical_mcus; ++y)
+        u8 huff_temp[buffer_size]; // encoding buffer
+        u8* ptr = huff_temp;
+
+        int cols = mcu_width;
+        auto reader = read_func;
+
+        for (int x = 0; x < horizontal_mcus; ++x)
         {
-            int rows = mcu_height;
-            auto read_func = read_8x8; // default: optimized 8x8 reader
-
-            if (y >= vertical_mcus - 1)
+            if (x >= right_mcu)
             {
-                // vertical clipping
-                rows = rows_in_bottom_mcus;
-                read_func = read; // clipping reader
+                // horizontal clipping
+                cols = cols_in_right_mcus;
+                reader = read; // clipping reader
             }
 
-            queue.enqueue([this, y, &buffers, input, stride, rows, read_func]
+            // read MCU data
+            s16 block[BLOCK_SIZE * 3];
+            reader(block, image, stride, rows, cols);
+
+            // encode the data in MCU
+            for (int i = 0; i < components; ++i)
             {
-                const u8* image = input;
+                ptr = encode(huffman, ptr, block + i * BLOCK_SIZE, channel[i]);
+            }
 
-                HuffmanEncoder huffman;
-                huffman.fdct = fdct;
-
-                EncodeBuffer& buffer = buffers[y];
-
-                constexpr int buffer_size = 2048;
-                constexpr int flush_threshold = buffer_size - 512;
-
-                u8 huff_temp[buffer_size]; // encoding buffer
-                u8* ptr = huff_temp;
-
-                int cols = mcu_width;
-                auto reader = read_func;
-
-                const int right_mcu = horizontal_mcus - 1;
-
-                for (int x = 0; x < horizontal_mcus; ++x)
-                {
-                    if (x >= right_mcu)
-                    {
-                        // horizontal clipping
-                        cols = cols_in_right_mcus;
-                        reader = read; // clipping reader
-                    }
-
-                    // read MCU data
-                    s16 block[BLOCK_SIZE * 3];
-                    reader(block, image, stride, rows, cols);
-
-                    // encode the data in MCU
-                    for (int i = 0; i < components; ++i)
-                    {
-                        ptr = encode(huffman, ptr, block + i * BLOCK_SIZE, channel[i]);
-                    }
-
-                    // flush encoding buffer
-                    if (ptr - huff_temp > flush_threshold)
-                    {
-                        buffer.append(huff_temp, ptr - huff_temp);
-                        ptr = huff_temp;
-                    }
-
-                    image += mcu_stride;
-                }
-
-                // flush encoding buffer
-                ptr = huffman.flush(ptr);
+            // flush encoding buffer
+            if (ptr - huff_temp > flush_threshold)
+            {
                 buffer.append(huff_temp, ptr - huff_temp);
+                ptr = huff_temp;
+            }
 
-                // mark buffer ready for writing
-                buffer.ready = true;
-            });
-
-            input += m_surface.stride * mcu_height;
+            image += mcu_stride;
         }
+
+        // flush encoding buffer
+        ptr = huffman.flush(ptr);
+        buffer.append(huff_temp, ptr - huff_temp);
+
+        // mark buffer ready for writing
+        buffer.ready = true;
+    }
+
+    ImageEncodeStatus jpegEncoder::encodeImage(Stream& stream)
+    {
+        const u8* image = m_surface.image;
+        size_t stride = m_surface.stride;
 
         BigEndianStream s(stream);
 
         // writing marker data
         writeMarkers(s);
 
-        for (int y = 0; y < vertical_mcus; ++y)
-        {
-            EncodeBuffer& buffer = buffers[y];
+        // encode MCUs
 
-            for ( ; !buffer.ready; )
+        if (m_options.multithread)
+        {
+            ConcurrentQueue queue;
+
+            // bitstream for each MCU scan
+            std::vector<EncodeBuffer> buffers(vertical_mcus);
+
+            for (int y = 0; y < vertical_mcus; ++y)
             {
-                // buffer is not processed yet; help the thread pool while waiting
-                queue.steal();
+                int rows = mcu_height;
+                auto read_func = read_8x8; // default: optimized 8x8 reader
+
+                if (y >= vertical_mcus - 1)
+                {
+                    // vertical clipping
+                    rows = rows_in_bottom_mcus;
+                    read_func = read; // clipping reader
+                }
+
+                queue.enqueue([this, y, &buffers, image, stride, rows, read_func]
+                {
+                    EncodeBuffer& buffer = buffers[y];
+                    encodeInterval(buffer, image, stride, read_func, rows);
+                });
+
+                image += m_surface.stride * mcu_height;
             }
 
-            // write huffman bitstream
-            s.write(buffer, buffer.size());
+            for (int y = 0; y < vertical_mcus; ++y)
+            {
+                EncodeBuffer& buffer = buffers[y];
 
-            // write restart marker
-            int index = y & 7;
-            s.write16(MARKER_RST0 + index);
+                for ( ; !buffer.ready; )
+                {
+                    // buffer is not processed yet; help the thread pool while waiting
+                    queue.steal();
+                }
+
+                // write huffman bitstream
+                s.write(buffer, buffer.size());
+
+                // write restart marker
+                int index = y & 7;
+                s.write16(MARKER_RST0 + index);
+            }
+        }
+        else
+        {
+            for (int y = 0; y < vertical_mcus; ++y)
+            {
+                int rows = mcu_height;
+                auto read_func = read_8x8; // default: optimized 8x8 reader
+
+                if (y >= vertical_mcus - 1)
+                {
+                    // vertical clipping
+                    rows = rows_in_bottom_mcus;
+                    read_func = read; // clipping reader
+                }
+
+                EncodeBuffer buffer;
+                encodeInterval(buffer, image, stride, read_func, rows);
+
+                // write huffman bitstream
+                s.write(buffer, buffer.size());
+
+                // write restart marker
+                int index = y & 7;
+                s.write16(MARKER_RST0 + index);
+
+                image += m_surface.stride * mcu_height;
+            }
         }
 
         // EOI marker
@@ -2663,8 +2803,8 @@ namespace
 
 } // namespace
 
-namespace mango {
-namespace jpeg {
+namespace mango::jpeg
+{
 
     ImageEncodeStatus encodeImage(Stream& stream, const Surface& surface, const ImageEncodeOptions& options)
     {
@@ -2690,7 +2830,4 @@ namespace jpeg {
         return status;
     }
 
-} // namespace jpeg
-} // namespace mango
-
-#endif // MANGO_ENABLE_LICENSE_GPL
+} // namespace mango::jpeg

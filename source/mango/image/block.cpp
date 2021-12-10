@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <map>
 #include <mango/core/core.hpp>
@@ -12,10 +12,11 @@
 #define FORMAT_ASTC_SRGB MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8)
 #define FORMAT_ASTC_FP16 MAKE_FORMAT(64, FLOAT16, RGBA, 16, 16, 16, 16)
 
-namespace mango
+namespace mango::image
 {
 
     void decode_block_dxt1            (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride); // BC1
+    void decode_block_dxt1a           (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride); // BC1A
     void decode_block_dxt3            (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride); // BC2
     void decode_block_dxt5            (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride); // BC3
     void decode_block_3dc_x           (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride); // BC4U
@@ -27,14 +28,14 @@ namespace mango
     void decode_block_rgb9e5          (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_r11f_g11f_b10f  (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_r10f_g11f_b11f  (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
-    void decode_block_pvrtc           (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_atc             (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_atc_e           (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_atc_i           (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_fxt1_rgb        (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_fxt1_rgba       (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
 
-#ifdef MANGO_ENABLE_LICENSE_APACHE
+    void decode_surface_pvrtc         (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
+    void decode_surface_pvrtc2        (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
 
     void decode_block_etc1            (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_etc2            (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
@@ -43,10 +44,6 @@ namespace mango
     void decode_block_eac_rg11        (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_astc_fp16       (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_astc_srgb       (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
-
-#endif // MANGO_ENABLE_LICENSE_APACHE
-
-#ifdef MANGO_ENABLE_LICENSE_MICROSOFT
 
     void decode_block_bc1             (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void decode_block_bc2             (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
@@ -71,15 +68,14 @@ namespace mango
     void encode_block_bc6hs           (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
     void encode_block_bc7             (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
 
-#endif // MANGO_ENABLE_LICENSE_MICROSOFT
-
     void encode_block_etc1            (const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride);
 
-} // namespace mango
+} // namespace mango::image
 
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     const TextureCompressionInfo g_blockTable[] =
     {
@@ -95,7 +91,7 @@ namespace
             0,
             opengl::COMPRESSED_RGB_FXT1_3DFX,
             0,
-            8, 4, 1, 16, MAKE_FORMAT(32, UNORM, BGRA, 8, 8, 8, 8), decode_block_fxt1_rgb, nullptr
+            8, 4, 1, 16, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_fxt1_rgb, nullptr
         ),
 
         TextureCompressionInfo(
@@ -103,7 +99,7 @@ namespace
             0,
             opengl::COMPRESSED_RGBA_FXT1_3DFX,
             0,
-            8, 4, 1, 16, MAKE_FORMAT(32, UNORM, BGRA, 8, 8, 8, 8), decode_block_fxt1_rgba, nullptr
+            8, 4, 1, 16, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_fxt1_rgba, nullptr
         ),
 
         // AMD_compressed_ATC_texture
@@ -207,7 +203,7 @@ namespace
             0,
             opengl::COMPRESSED_RGBA_S3TC_DXT1_EXT,
             vulkan::FORMAT_BC1_RGBA_UNORM_BLOCK,
-            4, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_dxt1, encode_block_bc1a
+            4, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_dxt1a, encode_block_bc1a
         ),
 
         TextureCompressionInfo(
@@ -215,7 +211,7 @@ namespace
             0,
             opengl::COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT,
             vulkan::FORMAT_BC1_RGBA_SRGB_BLOCK,
-            4, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_dxt1, encode_block_bc1a
+            4, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_dxt1a, encode_block_bc1a
         ),
 
         TextureCompressionInfo(
@@ -249,8 +245,6 @@ namespace
             vulkan::FORMAT_BC3_SRGB_BLOCK,
             4, 4, 1, 16, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_dxt5, encode_block_bc3
         ),
-
-#ifdef MANGO_ENABLE_LICENSE_MICROSOFT
 
         // RGTC
 
@@ -320,8 +314,6 @@ namespace
             4, 4, 1, 16, MAKE_FORMAT(128, FLOAT32, RGBA, 32, 32, 32, 32), decode_block_bc7, encode_block_bc7
         ),
 
-#endif
-
         // IMG_texture_compression_pvrtc
 
         TextureCompressionInfo(
@@ -329,7 +321,7 @@ namespace
             0,
             opengl::COMPRESSED_RGB_PVRTC_4BPPV1_IMG,
             0,
-            4, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
+            4, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc, nullptr
         ),
 
         TextureCompressionInfo(
@@ -337,7 +329,7 @@ namespace
             0,
             opengl::COMPRESSED_RGB_PVRTC_2BPPV1_IMG,
             0,
-            8, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
+            8, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc, nullptr
         ),
 
         TextureCompressionInfo(
@@ -345,7 +337,7 @@ namespace
             0,
             opengl::COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,
             vulkan::FORMAT_PVRTC1_4BPP_UNORM_BLOCK_IMG,
-            4, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
+            4, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc, nullptr
         ),
 
         TextureCompressionInfo(
@@ -353,7 +345,7 @@ namespace
             0,
             opengl::COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,
             vulkan::FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG,
-            8, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
+            8, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc, nullptr
         ),
 
         // IMG_texture_compression_pvrtc2
@@ -363,7 +355,7 @@ namespace
             0,
             opengl::COMPRESSED_RGBA_PVRTC_2BPPV2_IMG,
             vulkan::FORMAT_PVRTC2_2BPP_UNORM_BLOCK_IMG,
-            8, 4, 1, 8, Format(), nullptr, nullptr
+            8, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc2, nullptr
         ),
 
         TextureCompressionInfo(
@@ -371,7 +363,7 @@ namespace
             0,
             opengl::COMPRESSED_RGBA_PVRTC_4BPPV2_IMG,
             vulkan::FORMAT_PVRTC2_4BPP_UNORM_BLOCK_IMG,
-            4, 4, 1, 8, Format(), nullptr, nullptr
+            4, 4, 1, 8, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc2, nullptr
         ),
 
         // EXT_pvrtc_sRGB
@@ -381,7 +373,7 @@ namespace
             0,
             opengl::COMPRESSED_SRGB_PVRTC_2BPPV1_EXT,
             0,
-            8, 8, 1, 16, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
+            8, 8, 1, 16, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc, nullptr
         ),
 
         TextureCompressionInfo(
@@ -389,7 +381,7 @@ namespace
             0,
             opengl::COMPRESSED_SRGB_PVRTC_4BPPV1_EXT,
             0,
-            8, 8, 1, 32, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
+            8, 8, 1, 32, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc, nullptr
         ),
 
         TextureCompressionInfo(
@@ -397,7 +389,7 @@ namespace
             0,
             opengl::COMPRESSED_SRGB_ALPHA_PVRTC_2BPPV1_EXT,
             vulkan::FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG,
-            8, 8, 1, 16, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
+            8, 8, 1, 16, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc, nullptr
         ),
 
         TextureCompressionInfo(
@@ -405,10 +397,8 @@ namespace
             0,
             opengl::COMPRESSED_SRGB_ALPHA_PVRTC_4BPPV1_EXT,
             vulkan::FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG,
-            8, 8, 1, 32, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_block_pvrtc, nullptr
+            8, 8, 1, 32, MAKE_FORMAT(32, UNORM, RGBA, 8, 8, 8, 8), decode_surface_pvrtc, nullptr
         ),
-
-#ifdef MANGO_ENABLE_LICENSE_APACHE
 
         // OES_compressed_ETC1_RGB8_texture
 
@@ -891,8 +881,6 @@ namespace
             6, 6, 6, 16, Format(), nullptr, nullptr
         ),
 
-#endif
-
         // Packed Pixel
 
         TextureCompressionInfo(
@@ -1000,7 +988,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
 	// ----------------------------------------------------------------------------
@@ -1214,4 +1202,4 @@ namespace mango
         return status;
     }
 
-} // namespace mango
+} // namespace mango::image

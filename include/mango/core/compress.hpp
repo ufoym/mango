@@ -1,13 +1,14 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #pragma once
 
+#include <string>
 #include <vector>
+#include <memory>
 #include <mango/core/configure.hpp>
 #include <mango/core/memory.hpp>
-#include <mango/core/object.hpp>
 
 namespace mango
 {
@@ -51,21 +52,17 @@ namespace mango
         virtual size_t decode(Memory dest, ConstMemory source) = 0;
     };
 
-#ifdef MANGO_ENABLE_LICENSE_BSD
-
     namespace lz4
     {
-        SharedObject<StreamEncoder> createStreamEncoder(int level = 4);
-        SharedObject<StreamDecoder> createStreamDecoder();
+        std::shared_ptr<StreamEncoder> createStreamEncoder(int level = 4);
+        std::shared_ptr<StreamDecoder> createStreamDecoder();
     }
 
     namespace zstd
     {
-        SharedObject<StreamEncoder> createStreamEncoder(int level = 4);
-        SharedObject<StreamDecoder> createStreamDecoder();
+        std::shared_ptr<StreamEncoder> createStreamEncoder(int level = 4);
+        std::shared_ptr<StreamDecoder> createStreamDecoder();
     }
-
-#endif
 
     // -----------------------------------------------------------------------
     // memory block compression
@@ -86,8 +83,6 @@ namespace mango
         size_t compress(Memory dest, ConstMemory source, int level = 6);
         size_t decompress(Memory dest, ConstMemory source);
     }
-
-#ifdef MANGO_ENABLE_LICENSE_BSD
 
     namespace lz4
     {
@@ -110,10 +105,6 @@ namespace mango
         size_t decompress(Memory dest, ConstMemory source);
     }
 
-#endif
-
-#ifdef MANGO_ENABLE_LICENSE_ZLIB
-
     namespace bzip2
     {
         size_t bound(size_t size);
@@ -127,8 +118,6 @@ namespace mango
         size_t compress(Memory dest, ConstMemory source, int level = 6);
         size_t decompress(Memory dest, ConstMemory source);
     }
-
-#endif
 
     namespace lzma
     {
@@ -195,12 +184,12 @@ namespace mango
             DEFLATE,
             ZLIB,
             GZIP,
-        } method;
+        } method = NONE;
         std::string name;
 
-        size_t (*bound)(size_t size);
-        size_t (*compress)(Memory dest, ConstMemory source, int level);
-        size_t (*decompress)(Memory dest, ConstMemory source);
+        size_t (*bound)(size_t size) = nullptr;
+        size_t (*compress)(Memory dest, ConstMemory source, int level) = nullptr;
+        size_t (*decompress)(Memory dest, ConstMemory source) = nullptr;
     };
 
     std::vector<Compressor> getCompressors();

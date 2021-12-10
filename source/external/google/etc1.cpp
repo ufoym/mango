@@ -19,8 +19,6 @@
 #include "../../../include/mango/core/configure.hpp"
 #include "../../../include/mango/image/compression.hpp"
 
-#ifdef MANGO_ENABLE_LICENSE_APACHE
-
 /* From http://www.khronos.org/registry/gles/extensions/OES/OES_compressed_ETC1_RGB8_texture.txt
 
  The number of bits that represent a 4x4 texel block is 64 bits if
@@ -384,7 +382,7 @@ void etc_encode_block_helper(const etc1_byte* pIn, size_t stride,
     }
 }
 
-namespace mango
+namespace mango::image
 {
 
     void encode_block_etc1(const TextureCompressionInfo& info, u8* output, const u8* input, size_t stride)
@@ -406,6 +404,4 @@ namespace mango
         ustore32be(output + 4, a.low);
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_LICENSE_APACHE
+} // namespace mango::image

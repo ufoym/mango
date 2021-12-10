@@ -7,70 +7,32 @@
 #include <mango/core/timer.hpp>
 #include <mango/image/image.hpp>
 
-namespace mango
+namespace mango::image
 {
 
     // ----------------------------------------------------------------------------
     // ImageServer
     // ----------------------------------------------------------------------------
 
-#ifdef MANGO_ENABLE_IMAGE_TGA
     void registerImageDecoderTGA();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PKM
     void registerImageDecoderPKM();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_DDS
     void registerImageDecoderDDS();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PNG
     void registerImageDecoderPNG();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_JPG
     void registerImageDecoderJPG();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_BMP
     void registerImageDecoderBMP();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PCX
     void registerImageDecoderPCX();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_IFF
     void registerImageDecoderIFF();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_HDR
     void registerImageDecoderHDR();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_GIF
     void registerImageDecoderGIF();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_KTX
     void registerImageDecoderKTX();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PVR
     void registerImageDecoderPVR();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_ASTC
     void registerImageDecoderASTC();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_ZPNG
     void registerImageDecoderZPNG();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_SGI
     void registerImageDecoderSGI();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PNM
     void registerImageDecoderPNM();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_ATARI
     void registerImageDecoderATARI();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_C64
     void registerImageDecoderC64();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_WEBP
     void registerImageDecoderWEBP();
-#endif
 
     class ImageServer
     {
@@ -81,63 +43,25 @@ namespace mango
     public:
         ImageServer()
         {
-#ifdef MANGO_ENABLE_IMAGE_TGA
             registerImageDecoderTGA();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PKM
             registerImageDecoderPKM();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_DDS
             registerImageDecoderDDS();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PNG
             registerImageDecoderPNG();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_JPG
             registerImageDecoderJPG();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_BMP
             registerImageDecoderBMP();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PCX
             registerImageDecoderPCX();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_IFF
             registerImageDecoderIFF();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_HDR
             registerImageDecoderHDR();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_GIF
             registerImageDecoderGIF();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_KTX
             registerImageDecoderKTX();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PVR
             registerImageDecoderPVR();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_ASTC
             registerImageDecoderASTC();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_ZPNG
             registerImageDecoderZPNG();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_SGI
             registerImageDecoderSGI();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_PNM
             registerImageDecoderPNM();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_ATARI
             registerImageDecoderATARI();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_C64
             registerImageDecoderC64();
-#endif
-#ifdef MANGO_ENABLE_IMAGE_WEBP
             registerImageDecoderWEBP();
-#endif
         }
 
         ~ImageServer()
@@ -164,23 +88,13 @@ namespace mango
         ImageDecoder::CreateDecoderFunc getImageDecoder(const std::string& extension) const
         {
             auto i = m_decoders.find(getLowerCaseExtension(extension));
-            if (i != m_decoders.end())
-            {
-                return i->second;
-            }
-
-            return nullptr;
+            return i != m_decoders.end() ? i->second : nullptr;
         }
 
         ImageEncoder::EncodeFunc getImageEncoder(const std::string& extension) const
         {
             auto i = m_encoders.find(getLowerCaseExtension(extension));
-            if (i != m_encoders.end())
-            {
-                return i->second;
-            }
-
-            return nullptr;
+            return i != m_encoders.end() ? i->second : nullptr;
         }
     } g_imageServer;
 
@@ -234,10 +148,10 @@ namespace mango
 
     ImageDecoder::ImageDecoder(ConstMemory memory, const std::string& filename)
     {
-        ImageDecoder::CreateDecoderFunc create_decoder_func = g_imageServer.getImageDecoder(filename);
-        if (create_decoder_func)
+        ImageDecoder::CreateDecoderFunc create = g_imageServer.getImageDecoder(filename);
+        if (create)
         {
-            ImageDecoderInterface* x = create_decoder_func(memory);
+            ImageDecoderInterface* x = create(memory);
             m_interface.reset(x);
         }
     }
@@ -255,13 +169,13 @@ namespace mango
     {
         ImageHeader header;
 
-        if (!m_interface)
+        if (m_interface)
         {
-            header.setError("[WARNING] ImageDecoder::header() is not supported for this extension.");
+            header = m_interface->header();
         }
         else
         {
-            header = m_interface->header();
+            header.setError("[WARNING] ImageDecoder::header() is not supported for this extension.");
         }
 
         return header;
@@ -271,13 +185,13 @@ namespace mango
     {
         ImageDecodeStatus status;
 
-        if (!m_interface)
+        if (m_interface)
         {
-            status.setError("[WARNING] ImageDecoder::decode() is not supported for this extension.");
+            status = m_interface->decode(dest, options, level, depth, face);
         }
         else
         {
-            status = m_interface->decode(dest, options.palette, level, depth, face);
+            status.setError("[WARNING] ImageDecoder::decode() is not supported for this extension.");
         }
 
         return status;
@@ -341,16 +255,16 @@ namespace mango
     {
         ImageEncodeStatus status;
 
-        if (!m_encode_func)
+        if (m_encode_func)
         {
-            status.setError("[WARNING] ImageEncoder::encode() is not supported for this extension.");
+            status = m_encode_func(output, source, options);
         }
         else
         {
-            status = m_encode_func(output, source, options);
+            status.setError("[WARNING] ImageEncoder::encode() is not supported for this extension.");
         }
 
         return status;
     }
 
-} // namespace mango
+} // namespace mango::image

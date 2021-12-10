@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # mango makefile
 #
-# Copyright (C) 2012-2020 Twilight 3D Finland Oy Ltd.
+# Copyright (C) 2012-2021 Twilight 3D Finland Oy Ltd.
 # ---------------------------------------------------------------------------
 
 # NOTE: These build scripts are for custom tinkering and hacking, please use
@@ -56,7 +56,7 @@ OS = $(shell uname)
 
 # language versions
 CC_STD = -std=c11
-CPP_STD = -std=c++14
+CPP_STD = -std=c++17
 
 # common compiler options (LLVM/CLANG/GCC)
 OPTIONS     += -c -Wall -O3 -ffast-math
@@ -76,8 +76,6 @@ NEON = -mfpu=neon-fp16 -mfp16-format=ieee
 
 LIBNAME_MANGO  = mango
 LIBNAME_OPENGL = mango-opengl
-LIBNAME_VULKAN = mango-vulkan
-LIBNAME_FRAMEBUFFER = mango-framebuffer
 
 INCLUDE_BASE = ../../include
 SOURCE_BASE  = ../../source
@@ -116,8 +114,6 @@ SOURCE_DIRS_MANGO  = mango/core \
                      external/lzma \
                      $(SOURCE_WEBP)
 SOURCE_DIRS_OPENGL = mango/opengl
-SOURCE_DIRS_VULKAN = mango/vulkan
-SOURCE_DIRS_FRAMEBUFFER = mango/framebuffer
 
 # ---------------------------------------------------------------------------
 # Linux
@@ -128,15 +124,8 @@ ifeq (Linux, $(OS))
   SOURCE_DIRS_OPENGL += mango/window/xlib
   SOURCE_DIRS_OPENGL += mango/opengl/glx
 
-  SOURCE_DIRS_VULKAN += mango/window/xcb
-
-  SOURCE_DIRS_FRAMEBUFFER += mango/window/xlib
-  SOURCE_DIRS_FRAMEBUFFER += mango/framebuffer/xlib
-
   LIBRARY_MANGO  = lib$(LIBNAME_MANGO).so
   LIBRARY_OPENGL = lib$(LIBNAME_OPENGL).so
-  LIBRARY_VULKAN = lib$(LIBNAME_VULKAN).so
-  LIBRARY_FRAMEBUFFER = lib$(LIBNAME_FRAMEBUFFER).so
 
   CLEAN    = rm -fr *.so $(OBJECTS_PATH)
   INSTALL  = cp *.so /usr/local/lib ; ldconfig ; rm -rf /usr/local/include/mango ; cp -r $(INCLUDE_BASE)/mango/ /usr/local/include/mango/
@@ -154,8 +143,6 @@ ifeq (Linux, $(OS))
     CPP = g++ $(OPTIONS) $(OPTIONS_GCC) $(OPTIONS_X86) -fPIC -ansi $(CPP_STD)
     LINK_MANGO  = g++ -s -shared -Wl,-soname,$(LIBRARY_MANGO) -o $(LIBRARY_MANGO)
     LINK_OPENGL = g++ -s -shared -Wl,-soname,$(LIBRARY_OPENGL) -o $(LIBRARY_OPENGL)
-    LINK_VULKAN = g++ -s -shared -Wl,-soname,$(LIBRARY_VULKAN) -o $(LIBRARY_VULKAN)
-    LINK_FRAMEBUFFER = g++ -s -shared -Wl,-soname,$(LIBRARY_FRAMEBUFFER) -o $(LIBRARY_FRAMEBUFFER)
   endif
 
   ###############################################################################
@@ -170,8 +157,6 @@ ifeq (Linux, $(OS))
     CPP = g++ $(OPTIONS) $(OPTIONS_GCC) $(OPTIONS_X86) -ansi $(CPP_STD)
     LINK_MANGO  = g++ -s -shared -Wl,-soname,$(LIBRARY_MANGO) -o $(LIBRARY_MANGO)
     LINK_OPENGL = g++ -s -shared -Wl,-soname,$(LIBRARY_OPENGL) -o $(LIBRARY_OPENGL)
-    LINK_VULKAN = g++ -s -shared -Wl,-soname,$(LIBRARY_VULKAN) -o $(LIBRARY_VULKAN)
-    LINK_FRAMEBUFFER = g++ -s -shared -Wl,-soname,$(LIBRARY_FRAMEBUFFER) -o $(LIBRARY_FRAMEBUFFER)
   endif
 
   ###############################################################################
@@ -186,8 +171,6 @@ ifeq (Linux, $(OS))
     CPP = g++ $(OPTIONS) $(OPTIONS_GCC) -mfpu=vfp -mfloat-abi=hard -ansi -std=c++0x
     LINK_MANGO  = g++ -s -shared -Wl,-soname,$(LIBRARY_MANGO) -o $(LIBRARY_MANGO)
     LINK_OPENGL = g++ -s -shared -Wl,-soname,$(LIBRARY_OPENGL) -o $(LIBRARY_OPENGL)
-    LINK_VULKAN = g++ -s -shared -Wl,-soname,$(LIBRARY_VULKAN) -o $(LIBRARY_VULKAN)
-    LINK_FRAMEBUFFER = g++ -s -shared -Wl,-soname,$(LIBRARY_FRAMEBUFFER) -o $(LIBRARY_FRAMEBUFFER)
   endif
 
   ###############################################################################
@@ -202,8 +185,6 @@ ifeq (Linux, $(OS))
     CPP = g++ $(OPTIONS) $(OPTIONS_GCC) -marm -mcpu=cortex-a9 -mtune=cortex-a9 $(NEON) -mfloat-abi=hard -funsafe-math-optimizations -fpermissive -Wno-psabi -fPIC -ansi $(CPP_STD)
     LINK_MANGO  = g++ -s -shared -Wl,-soname,$(LIBRARY_MANGO) -o $(LIBRARY_MANGO)
     LINK_OPENGL = g++ -s -shared -Wl,-soname,$(LIBRARY_OPENGL) -o $(LIBRARY_OPENGL)
-    LINK_VULKAN = g++ -s -shared -Wl,-soname,$(LIBRARY_VULKAN) -o $(LIBRARY_VULKAN)
-    LINK_FRAMEBUFFER = g++ -s -shared -Wl,-soname,$(LIBRARY_FRAMEBUFFER) -o $(LIBRARY_FRAMEBUFFER)
   endif
 
   ###############################################################################
@@ -220,8 +201,6 @@ ifeq (Linux, $(OS))
     CPP = powerpc64le-linux-gnu-g++-5 $(OPTIONS) $(OPTIONS_GCC) -mcpu=power8 -funsafe-math-optimizations -fpermissive -fPIC -ansi $(CPP_STD)
     LINK_MANGO  = powerpc64le-linux-gnu-g++-5 -s -shared -Wl,-soname,$(LIBRARY_MANGO) -o $(LIBRARY_MANGO)
     LINK_OPENGL = powerpc64le-linux-gnu-g++-5 -s -shared -Wl,-soname,$(LIBRARY_OPENGL) -o $(LIBRARY_OPENGL)
-    LINK_VULKAN = powerpc64le-linux-gnu-g++-5 -s -shared -Wl,-soname,$(LIBRARY_VULKAN) -o $(LIBRARY_VULKAN)
-    LINK_FRAMEBUFFER = powerpc64le-linux-gnu-g++-5 -s -shared -Wl,-soname,$(LIBRARY_FRAMEBUFFER) -o $(LIBRARY_FRAMEBUFFER)
   endif
 
   ###############################################################################
@@ -240,8 +219,6 @@ ifeq (Linux, $(OS))
     CPP += -mips64r5 -mfp64
     LINK_MANGO  = mips64-linux-gnuabi64-g++-5 -s -shared -Wl,-soname,$(LIBRARY_MANGO) -o $(LIBRARY_MANGO)
     LINK_OPENGL = mips64-linux-gnuabi64-g++-5 -s -shared -Wl,-soname,$(LIBRARY_OPENGL) -o $(LIBRARY_OPENGL)
-    LINK_VULKAN = mips64-linux-gnuabi64-g++-5 -s -shared -Wl,-soname,$(LIBRARY_VULKAN) -o $(LIBRARY_VULKAN)
-    LINK_FRAMEBUFFER = mips64-linux-gnuabi64-g++-5 -s -shared -Wl,-soname,$(LIBRARY_FRAMEBUFFER) -o $(LIBRARY_FRAMEBUFFER)
   endif
 
   ###############################################################################
@@ -258,8 +235,6 @@ ifeq (Linux, $(OS))
     CPP = aarch64-linux-gnu-g++-5 $(OPTIONS) $(OPTIONS_GCC) -funsafe-math-optimizations -fpermissive -fPIC -ansi $(CPP_STD)
     LINK_MANGO  = aarch64-linux-gnu-g++-5 -s -shared -Wl,-soname,$(LIBRARY_MANGO) -o $(LIBRARY_MANGO)
     LINK_OPENGL = aarch64-linux-gnu-g++-5 -s -shared -Wl,-soname,$(LIBRARY_OPENGL) -o $(LIBRARY_OPENGL)
-    LINK_VULKAN = aarch64-linux-gnu-g++-5 -s -shared -Wl,-soname,$(LIBRARY_VULKAN) -o $(LIBRARY_VULKAN)
-    LINK_FRAMEBUFFER = aarch64-linux-gnu-g++-5 -s -shared -Wl,-soname,$(LIBRARY_FRAMEBUFFER) -o $(LIBRARY_FRAMEBUFFER)
   endif
 
 endif
@@ -273,23 +248,16 @@ ifeq (Darwin, $(OS))
   SOURCE_DIRS_OPENGL += mango/opengl/cocoa
   SOURCE_DIRS_OPENGL += mango/window/cocoa
 
-  SOURCE_DIRS_FRAMEBUFFER += mango/window/cocoa
-  SOURCE_DIRS_FRAMEBUFFER += mango/framebuffer/cocoa
-
   # hack to create /usr/local (Xcode requires them and they don't exist by default)
   LOCAL    = mkdir -p /usr/local/lib ; mkdir -p /usr/local/include
 
   LIBRARY_MANGO  = lib$(LIBNAME_MANGO).dylib
   LIBRARY_OPENGL = lib$(LIBNAME_OPENGL).dylib
-  LIBRARY_VULKAN =
-  LIBRARY_FRAMEBUFFER = lib$(LIBNAME_FRAMEBUFFER).dylib
   PLATFORM = x86-64
   CC  = cc  $(OPTIONS) $(OPTIONS_X86) $(CC_STD) -mmacosx-version-min=10.13
   CPP = c++ $(OPTIONS) $(OPTIONS_X86) $(CPP_STD) -mmacosx-version-min=10.13 $(STD) -stdlib=libc++
   LINK_MANGO  = ld -o $(LIBRARY_MANGO)  -dylib -undefined dynamic_lookup -macosx_version_min 10.13
   LINK_OPENGL = ld -o $(LIBRARY_OPENGL) -dylib -undefined dynamic_lookup -macosx_version_min 10.13
-  LINK_VULKAN = ld -o $(LIBRARY_VULKAN) -dylib -undefined dynamic_lookup -macosx_version_min 10.13
-  LINK_FRAMEBUFFER = ld -o $(LIBRARY_FRAMEBUFFER) -dylib -undefined dynamic_lookup -macosx_version_min 10.13
   INSTALL  = $(LOCAL) ; cp *.dylib /usr/local/lib ; cp -r $(INCLUDE_BASE)/mango/ /usr/local/include/mango/
   CLEAN    = rm -fr $(OBJECTS_PATH) *.dylib so_locations
 
@@ -321,33 +289,11 @@ OBJECTS_OPENGL += $(addprefix $(OBJECTS_PATH)/, $(patsubst %.c,%.o, \
 OBJECTS_OPENGL += $(addprefix $(OBJECTS_PATH)/, $(patsubst %.mm,%.o, \
     $(abspath $(foreach dir, $(SOURCE_DIRS_OPENGL), $(wildcard $(SOURCE_BASE)/$(dir)/*.mm)))))
 
-# vulkan
-
-OBJECTS_VULKAN += $(addprefix $(OBJECTS_PATH)/, $(patsubst %.cpp,%.o, \
-    $(abspath $(foreach dir, $(SOURCE_DIRS_VULKAN), $(wildcard $(SOURCE_BASE)/$(dir)/*.cpp)))))
-
-OBJECTS_VULKAN += $(addprefix $(OBJECTS_PATH)/, $(patsubst %.c,%.o, \
-    $(abspath $(foreach dir, $(SOURCE_DIRS_VULKAN), $(wildcard $(SOURCE_BASE)/$(dir)/*.c)))))
-
-OBJECTS_VULKAN += $(addprefix $(OBJECTS_PATH)/, $(patsubst %.mm,%.o, \
-    $(abspath $(foreach dir, $(SOURCE_DIRS_VULKAN), $(wildcard $(SOURCE_BASE)/$(dir)/*.mm)))))
-
-# framebuffer
-
-OBJECTS_FRAMEBUFFER += $(addprefix $(OBJECTS_PATH)/, $(patsubst %.cpp,%.o, \
-    $(abspath $(foreach dir, $(SOURCE_DIRS_FRAMEBUFFER), $(wildcard $(SOURCE_BASE)/$(dir)/*.cpp)))))
-
-OBJECTS_FRAMEBUFFER += $(addprefix $(OBJECTS_PATH)/, $(patsubst %.c,%.o, \
-    $(abspath $(foreach dir, $(SOURCE_DIRS_FRAMEBUFFER), $(wildcard $(SOURCE_BASE)/$(dir)/*.c)))))
-
-OBJECTS_FRAMEBUFFER += $(addprefix $(OBJECTS_PATH)/, $(patsubst %.mm,%.o, \
-    $(abspath $(foreach dir, $(SOURCE_DIRS_FRAMEBUFFER), $(wildcard $(SOURCE_BASE)/$(dir)/*.mm)))))
-
 # ---------------------------------------------------------------------------
 # rules
 # ---------------------------------------------------------------------------
 
-all: $(LIBRARY_MANGO) $(LIBRARY_OPENGL) $(LIBRARY_VULKAN) $(LIBRARY_FRAMEBUFFER)
+all: $(LIBRARY_MANGO) $(LIBRARY_OPENGL)
 
 $(OBJECTS_PATH)/%.o: %.mm
 	@echo [Compile OBJC] $<
@@ -371,14 +317,6 @@ $(LIBRARY_MANGO): $(OBJECTS_MANGO)
 $(LIBRARY_OPENGL): $(OBJECTS_OPENGL)
 	@echo [Link $(PLATFORM)] $(LIBRARY_OPENGL)
 	@$(LINK_OPENGL) $(OBJECTS_OPENGL) $(LINK_POST)
-
-$(LIBRARY_VULKAN): $(OBJECTS_VULKAN)
-	@echo [Link $(PLATFORM)] $(LIBRARY_VULKAN)
-	@$(LINK_VULKAN) $(OBJECTS_VULKAN) $(LINK_POST)
-
-$(LIBRARY_FRAMEBUFFER): $(OBJECTS_FRAMEBUFFER)
-	@echo [Link $(PLATFORM)] $(LIBRARY_FRAMEBUFFER)
-	@$(LINK_FRAMEBUFFER) $(OBJECTS_FRAMEBUFFER) $(LINK_POST)
 
 install:
 	@echo [Install]

@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #pragma once
 
@@ -10,7 +10,7 @@
 #include <mango/image/format.hpp>
 #include <mango/image/fourcc.hpp>
 
-namespace mango
+namespace mango::image
 {
     class Surface;
 
@@ -223,8 +223,8 @@ namespace mango
         u32 gl;             // OpenGL format
         u32 vk;             // Vulkan format
 
-        int width;          // block width
-        int height;         // block height
+        int width;          // block width (surface width when SURFACE flag is set)
+        int height;         // block height (surface height when SURFACE flag is set)
         int depth;          // block depth
         int bytes;          // block size in bytes
         Format format;      // pixel format for encode/decode
@@ -260,48 +260,53 @@ namespace mango
     using TextureCompressionFlags = TextureCompressionInfo::CompressionFlags;
     using TextureCompression = TextureCompressionInfo::TextureCompression;
 
+} // namespace mango::image
+
+namespace mango
+{
+
     namespace opengl
     {
         static inline
-        TextureCompression getTextureCompression(u32 format)
+        image::TextureCompression getTextureCompression(u32 format)
         {
-            return TextureCompressionInfo(opengl::TextureFormat(format)).compression;
+            return image::TextureCompressionInfo(opengl::TextureFormat(format)).compression;
         }
 
         static inline
-        u32 getTextureFormat(TextureCompression compression)
+        u32 getTextureFormat(image::TextureCompression compression)
         {
-            return TextureCompressionInfo(compression).gl;
+            return image::TextureCompressionInfo(compression).gl;
         }
     }
 
     namespace vulkan
     {
         static inline
-        TextureCompression getTextureCompression(u32 format)
+        image::TextureCompression getTextureCompression(u32 format)
         {
-            return TextureCompressionInfo(vulkan::TextureFormat(format)).compression;
+            return image::TextureCompressionInfo(vulkan::TextureFormat(format)).compression;
         }
 
         static inline
-        u32 getTextureFormat(TextureCompression compression)
+        u32 getTextureFormat(image::TextureCompression compression)
         {
-            return TextureCompressionInfo(compression).vk;
+            return image::TextureCompressionInfo(compression).vk;
         }
     }
 
     namespace dxgi
     {
         static inline
-        TextureCompression getTextureCompression(u32 format)
+        image::TextureCompression getTextureCompression(u32 format)
         {
-            return TextureCompressionInfo(dxgi::TextureFormat(format)).compression;
+            return image::TextureCompressionInfo(dxgi::TextureFormat(format)).compression;
         }
 
         static inline
-        u32 getTextureFormat(TextureCompression compression)
+        u32 getTextureFormat(image::TextureCompression compression)
         {
-            return TextureCompressionInfo(compression).dxgi;
+            return image::TextureCompressionInfo(compression).dxgi;
         }
     }
 

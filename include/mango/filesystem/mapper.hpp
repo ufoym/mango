@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #pragma once
 
@@ -9,8 +9,8 @@
 #include <mango/core/configure.hpp>
 #include <mango/core/memory.hpp>
 
-namespace mango {
-namespace filesystem {
+namespace mango::filesystem
+{
 
     struct FileInfo
     {
@@ -30,6 +30,7 @@ namespace filesystem {
         FileInfo(const std::string& name, u64 size, u32 flags = 0);
         ~FileInfo();
 
+        bool isFile() const;
         bool isDirectory() const;
         bool isContainer() const;
         bool isCompressed() const;
@@ -99,19 +100,19 @@ namespace filesystem {
         virtual VirtualMemory* mmap(const std::string& filename) = 0;
     };
 
-    class Mapper : protected NonCopyable
+    class Mapper : public AbstractMapper
     {
     protected:
-        AbstractMapper* m_mapper { nullptr };
         std::shared_ptr<Mapper> m_parent_mapper;
-        VirtualMemory* m_parent_memory { nullptr };
         std::vector<std::unique_ptr<AbstractMapper>> m_mappers;
+        AbstractMapper* m_current_mapper { nullptr };
+        VirtualMemory* m_parent_memory { nullptr };
+
         std::string m_basepath;
         std::string m_pathname;
 
-        AbstractMapper* createCustomMapper(std::string& pathname, std::string& filename, const std::string& password);
-        AbstractMapper* createMemoryMapper(ConstMemory memory, const std::string& extension, const std::string& password);
         AbstractMapper* createFileMapper(const std::string& basepath);
+        std::string parse(const std::string& pathname, const std::string& password);
 
     public:
         Mapper(const std::string& pathname, const std::string& password);
@@ -119,14 +120,14 @@ namespace filesystem {
         Mapper(ConstMemory memory, const std::string& extension, const std::string& password);
         ~Mapper();
 
-        std::string parse(std::string& pathname, const std::string& password);
+        static bool isCustomMapper(const std::string& filename);
 
         const std::string& basepath() const;
         const std::string& pathname() const;
 
-        operator AbstractMapper* () const;
-        static bool isCustomMapper(const std::string& filename);
+        bool isFile(const std::string& filename) const override;
+        void getIndex(FileIndex& index, const std::string& pathname) override;
+        VirtualMemory* mmap(const std::string& filename) override;
     };
 
-} // namespace filesystem
-} // namespace mango
+} // namespace mango::filesystem

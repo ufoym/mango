@@ -34,6 +34,9 @@ The cmake build script will compile everything into one (.a) library
 Pro tip! "cmake -DENABLE_AVX512=ON .." to enable Intel AVX-512 SIMD instructions.
          "cmake -DBUILD_SHARED_LIBS=ON .." to compile .so/.dll/.dylib instead of .a/.lib
 
+Select compiler:
+    "cmake .. -DCMAKE_C_COMPILER=gcc-mp-7 -DCMAKE_CXX_COMPILER=g++-mp-7" (example for gcc-7 mp)    
+
 ------------------------------------------------------------------------------------------------
 * MAKE!
 ------------------------------------------------------------------------------------------------
@@ -48,9 +51,8 @@ for example when building with cross-compilation toolchains. Should work out of 
 The library will be compiled as shared object (.so) files: 
   - libmango.so
   - libmango-opengl.so
-  - libmango-vulkan.so
 
-The separation is done so that when not using OpenGL or Vulkan don't have to pull in X11 libraries.
+The separation is done so that when not using OpenGL don't have to pull in X11 libraries.
 
 Pro tip! "make simd=avx2" to enable Intel AVX2 SIMD instructions.
 
@@ -101,6 +103,7 @@ Solution:
   Install OpenGL headers. On Linux distributions you get these with "mesa":
   apt-get install mesa-common-dev
 
+-------------
 
 Error:
   /usr/bin/ld: cannot find -lGL

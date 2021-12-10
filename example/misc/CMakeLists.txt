@@ -8,6 +8,8 @@ list(APPEND EXAMPLES
     filesystem
     math
     memory
+    aes
+    hash
 )
 
 foreach(example IN LISTS EXAMPLES)

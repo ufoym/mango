@@ -2,6 +2,8 @@
     MANGO Multimedia Development Platform
     Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
+#if !defined(__ppc__)
+
 #include <mango/core/string.hpp>
 #include <mango/opengl/opengl.hpp>
 
@@ -112,7 +114,8 @@ namespace
 
 @end
 
-namespace mango {
+namespace mango
+{
 
     // -----------------------------------------------------------------------
     // OpenGLContext
@@ -349,12 +352,14 @@ namespace mango {
         return [m_context->view isInFullScreenMode];
 	}
 
-    int32x2 OpenGLContext::getWindowSize() const
+    math::int32x2 OpenGLContext::getWindowSize() const
     {
         CustomView* view = m_context->view;
         NSRect rect = [view frame];
         rect = [[m_handle->window contentView] convertRectToBacking:rect]; // NOTE: Retina conversion
-        return int32x2(rect.size.width, rect.size.height);
+        return math::int32x2(rect.size.width, rect.size.height);
     }
 
 } // namespace mango
+
+#endif

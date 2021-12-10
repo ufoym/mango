@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 /*
     Original NeuQuant implementation (C) 1994 Anthony Becker
@@ -111,9 +111,9 @@ namespace
         for (int i = 0; i < NETSIZE; ++i)
         {
             const int* n = network[i];
-            int dist = std::abs(n[0] - b) +
+            int dist = std::abs(n[0] - r) +
                        std::abs(n[1] - g) +
-                       std::abs(n[2] - r);
+                       std::abs(n[2] - b);
 
             if (dist < bestd)
             {
@@ -142,9 +142,9 @@ namespace
     void NeuQuant::alterSingle(int alpha, int i, int r, int g, int b)
     {
         int* n = network[i];
-        n[0] -= (alpha * (n[0] - b)) >> alphabiasshift;
+        n[0] -= (alpha * (n[0] - r)) >> alphabiasshift;
         n[1] -= (alpha * (n[1] - g)) >> alphabiasshift;
-        n[2] -= (alpha * (n[2] - r)) >> alphabiasshift;
+        n[2] -= (alpha * (n[2] - b)) >> alphabiasshift;
     }
 
     void NeuQuant::alterNeigh(int rad, int i, int r, int g, int b)
@@ -163,16 +163,16 @@ namespace
             if (j < hi)
             {
                 p = network[j++];
-                p[0] -= (a * (p[0] - b)) >> alpharadbshift;
+                p[0] -= (a * (p[0] - r)) >> alpharadbshift;
                 p[1] -= (a * (p[1] - g)) >> alpharadbshift;
-                p[2] -= (a * (p[2] - r)) >> alpharadbshift;
+                p[2] -= (a * (p[2] - b)) >> alpharadbshift;
             }
             if (k > lo)
             {
                 p = network[k--];
-                p[0] -= (a * (p[0] - b)) >> alpharadbshift;
+                p[0] -= (a * (p[0] - r)) >> alpharadbshift;
                 p[1] -= (a * (p[1] - g)) >> alpharadbshift;
-                p[2] -= (a * (p[2] - r)) >> alpharadbshift;
+                p[2] -= (a * (p[2] - b)) >> alpharadbshift;
             }
         }
     }
@@ -231,14 +231,14 @@ namespace
             }
         }
 
-        int j, b, g, r;
+        int j, r, g, b;
         int i = 0;
         int	phase = 0;
         while (i++ < samplepixels)
         {
-            b = p[0] << netbiasshift;
+            r = p[0] << netbiasshift;
             g = p[1] << netbiasshift;
-            r = p[2] << netbiasshift;
+            b = p[2] << netbiasshift;
             j = contest(r, g, b);
 
             alterSingle(alpha, j, r, g, b);
@@ -289,7 +289,7 @@ namespace
             for (int j = 0; j < 3; ++j)
             {
                 constexpr int bias = 1 << (netbiasshift - 1);
-                network[i][j] = clamp((network[i][j] + bias) >> netbiasshift, 0, 255);
+                network[i][j] = math::clamp((network[i][j] + bias) >> netbiasshift, 0, 255);
             }
 
             network[i][3] = i;
@@ -298,24 +298,24 @@ namespace
 
 } // namespace
 
-namespace mango {
-namespace image {
+namespace mango::image
+{
 
     ColorQuantizer::ColorQuantizer(const Surface& source, float quality)
     {
-        quality = clamp(quality, 0.0f, 1.0f);
+        quality = math::clamp(quality, 0.0f, 1.0f);
         int sample_factor = std::max(1, 30 - int(quality * 29.0f + 1.0f));
 
-        Bitmap temp(source, Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8));
+        Bitmap temp(source, Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8));
         NeuQuant nq(temp.image, temp.width * temp.height * 4, sample_factor);
 
         m_palette.size = NETSIZE;
 
         for (int i = 0; i < NETSIZE; ++i)
         {
-            m_palette.color[i].b = nq.network[i][0];
+            m_palette.color[i].r = nq.network[i][0];
             m_palette.color[i].g = nq.network[i][1];
-            m_palette.color[i].r = nq.network[i][2];
+            m_palette.color[i].b = nq.network[i][2];
             m_palette.color[i].a = 0xff;
 
             m_network[i][0] = nq.network[i][0];
@@ -333,9 +333,9 @@ namespace image {
 
         for (int i = 0; i < NETSIZE; ++i)
         {
-            m_network[i][0] = palette[i].b;
+            m_network[i][0] = palette[i].r;
             m_network[i][1] = palette[i].g;
-            m_network[i][2] = palette[i].r;
+            m_network[i][2] = palette[i].b;
             m_network[i][3] = i;
         }
 
@@ -363,15 +363,15 @@ namespace image {
             MANGO_EXCEPTION("[ColorQuantizer] The destination and source dimensions must be identical.");
         }
 
-        Bitmap temp(source, Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8));
+        Bitmap temp(source, Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8));
 
         int width = temp.width;
         int height = temp.height;
 
         for (int y = 0; y < height; ++y)
         {
-            ColorBGRA* s = temp.address<ColorBGRA>(0, y + 0);
-            ColorBGRA* n = temp.address<ColorBGRA>(0, y + 1);
+            Color* s = temp.address<Color>(0, y + 0);
+            Color* n = temp.address<Color>(0, y + 1);
             u8* d = dest.address<u8>(0, y);
 
             for (int x = 0; x < width; ++x)
@@ -392,26 +392,26 @@ namespace image {
                     // distribute the error to neighbouring pixels with Floyd-Steinberg weights
                     if (x < width - 1)
                     {
-                        s[x + 1].r = clamp(s[x + 1].r + (r * 7 / 16), 0, 255);
-                        s[x + 1].g = clamp(s[x + 1].g + (g * 7 / 16), 0, 255);
-                        s[x + 1].b = clamp(s[x + 1].b + (b * 7 / 16), 0, 255);
+                        s[x + 1].r = math::clamp(s[x + 1].r + (r * 7 / 16), 0, 255);
+                        s[x + 1].g = math::clamp(s[x + 1].g + (g * 7 / 16), 0, 255);
+                        s[x + 1].b = math::clamp(s[x + 1].b + (b * 7 / 16), 0, 255);
 
                         if (y < height - 1)
                         {
                             if (x > 0)
                             {
-                                n[x - 1].r = clamp(n[x - 1].r + (r * 3 / 16), 0, 255);
-                                n[x - 1].g = clamp(n[x - 1].g + (g * 3 / 16), 0, 255);
-                                n[x - 1].b = clamp(n[x - 1].b + (b * 3 / 16), 0, 255);
+                                n[x - 1].r = math::clamp(n[x - 1].r + (r * 3 / 16), 0, 255);
+                                n[x - 1].g = math::clamp(n[x - 1].g + (g * 3 / 16), 0, 255);
+                                n[x - 1].b = math::clamp(n[x - 1].b + (b * 3 / 16), 0, 255);
                             }
 
-                            n[x + 0].r = clamp(n[x + 0].r + (r * 5 / 16), 0, 255);
-                            n[x + 0].g = clamp(n[x + 0].g + (g * 5 / 16), 0, 255);
-                            n[x + 0].b = clamp(n[x + 0].b + (b * 5 / 16), 0, 255);
+                            n[x + 0].r = math::clamp(n[x + 0].r + (r * 5 / 16), 0, 255);
+                            n[x + 0].g = math::clamp(n[x + 0].g + (g * 5 / 16), 0, 255);
+                            n[x + 0].b = math::clamp(n[x + 0].b + (b * 5 / 16), 0, 255);
 
-                            n[x + 1].r = clamp(n[x + 1].r + (r * 1 / 16), 0, 255);
-                            n[x + 1].g = clamp(n[x + 1].g + (g * 1 / 16), 0, 255);
-                            n[x + 1].b = clamp(n[x + 1].b + (b * 1 / 16), 0, 255);
+                            n[x + 1].r = math::clamp(n[x + 1].r + (r * 1 / 16), 0, 255);
+                            n[x + 1].g = math::clamp(n[x + 1].g + (g * 1 / 16), 0, 255);
+                            n[x + 1].b = math::clamp(n[x + 1].b + (b * 1 / 16), 0, 255);
                         }
                     }
                 }
@@ -490,10 +490,10 @@ namespace image {
                 {
                     ++i;
                     if (dist < 0) dist = -dist;
-                    dist += std::abs(p[0] - b);
+                    dist += std::abs(p[0] - r);
                     if (dist < bestd)
                     {
-                        dist += std::abs(p[2] - r);
+                        dist += std::abs(p[2] - b);
                         if (dist < bestd)
                         {
                             bestd = dist;
@@ -515,10 +515,10 @@ namespace image {
                 {
                     --j;
                     if (dist < 0) dist = -dist;
-                    dist += std::abs(p[0] - b);
+                    dist += std::abs(p[0] - r);
                     if (dist < bestd)
                     {
-                        dist += std::abs(p[2] - r);
+                        dist += std::abs(p[2] - b);
                         if (dist < bestd)
                         {
                             bestd = dist;
@@ -532,5 +532,4 @@ namespace image {
         return best;
     }
 
-} // namespace image
-} // namespace mango
+} // namespace mango::image

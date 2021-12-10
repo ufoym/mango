@@ -20,15 +20,15 @@ namespace
     using namespace mango::filesystem;
 
     // -----------------------------------------------------------------
-	// get_pagesize()
+    // get_pagesize()
     // -----------------------------------------------------------------
 
-	inline long get_pagesize()
-	{
-		// NOTE: could be _SC_PAGE_SIZE for some platforms according to Linux Programmer's Manual
-		static long x = ::sysconf(_SC_PAGESIZE);
-		return x;
-	}
+    inline long get_pagesize()
+    {
+        // NOTE: could be _SC_PAGE_SIZE for some platforms according to Linux Programmer's Manual
+        static long x = ::sysconf(_SC_PAGESIZE);
+        return x;
+    }
 
     // -----------------------------------------------------------------
     // FileMemory
@@ -38,8 +38,8 @@ namespace
     {
     protected:
         int m_file;
-		size_t m_size;
-		void* m_address;
+        size_t m_size;
+        void* m_address;
 
     public:
         FileMemory(const std::string& filename, u64 x_offset, u64 x_size)
@@ -57,26 +57,26 @@ namespace
                 {
                     ::close(m_file);
                     m_file = -1;
-	                MANGO_EXCEPTION("[mapper.file] Cannot fstat \"%s\".", filename.c_str());
+                    MANGO_EXCEPTION("[mapper.file] Cannot fstat \"%s\".", filename.c_str());
                 }
                 else
                 {
-					const size_t file_size = size_t(sb.st_size);
-					const size_t file_offset = size_t(x_offset);
+                    const size_t file_size = size_t(sb.st_size);
+                    const size_t file_offset = size_t(x_offset);
 
-					size_t page_offset = 0;
-					if (file_offset > 0)
-					{
-						const long page_size = get_pagesize();
-						const long page_number = file_offset / page_size;
-						page_offset = page_number * page_size;
-					}
+                    size_t page_offset = 0;
+                    if (file_offset > 0)
+                    {
+                        const long page_size = get_pagesize();
+                        const long page_number = file_offset / page_size;
+                        page_offset = page_number * page_size;
+                    }
 
-					m_size = file_size - file_offset;
-					if (x_size > 0)
-					{
-						m_size = std::min(size_t(x_size), m_size);
-					}
+                    m_size = file_size - file_offset;
+                    if (x_size > 0)
+                    {
+                        m_size = std::min(size_t(x_size), m_size);
+                    }
 
                     if (m_size > 0)
                     {
@@ -173,18 +173,32 @@ namespace
 
 #if defined(MANGO_PLATFORM_OSX) || defined(MANGO_PLATFORM_IOS) || defined(MANGO_PLATFORM_BSD)
 
+    #if defined(__ppc__)
+        // PPC system headers have this subtle difference that fails to compile
+        using DirentType = struct dirent;
+    #else
+        using DirentType = const struct dirent;
+    #endif
+
         void getIndex(FileIndex& index, const std::string& pathname) override
         {
-            struct dirent** namelist = NULL;
+            struct dirent** namelist = nullptr;
             std::string fullname = m_basepath + pathname;
 
-            const int n = ::scandir(fullname.c_str(), &namelist, [] (const struct dirent* e)
+            if (fullname.empty())
+            {
+                // scandir() doesn't enumerate files in empty pathname
+                fullname = "./";
+            }
+
+            const int n = ::scandir(fullname.c_str(), &namelist, [] (DirentType* e) -> int
             {
                 // filter out "." and ".."
                 if (!std::strcmp(e->d_name, ".") || !std::strcmp(e->d_name, ".."))
                     return 0;
                 return 1;
             }, 0);
+
             if (n < 0)
             {
                 // Unable to open directory.
@@ -207,6 +221,13 @@ namespace
         void getIndex(FileIndex& index, const std::string& pathname) override
         {
             std::string fullname = m_basepath + pathname;
+
+            if (fullname.empty())
+            {
+                // opendir() doesn't enumerate files in empty pathname
+                fullname = "./";
+            }
+
             DIR* dirp = ::opendir(fullname.c_str());
             if (!dirp)
             {
@@ -241,8 +262,8 @@ namespace
 
 } // namespace
 
-namespace mango {
-namespace filesystem {
+namespace mango::filesystem
+{
 
     // -----------------------------------------------------------------
     // Mapper::createFileMapper()
@@ -255,5 +276,4 @@ namespace filesystem {
         return mapper;
     }
 
-} // namespace filesystem
-} // namespace mango
+} // namespace mango::filesystem

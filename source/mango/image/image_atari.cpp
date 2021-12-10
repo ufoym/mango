@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 /*
     ATARI decoders copyright (C) 2011 Toni Lönnberg. All rights reserved.
@@ -11,11 +11,10 @@
 #include <mango/core/system.hpp>
 #include <mango/image/image.hpp>
 
-#ifdef MANGO_ENABLE_IMAGE_ATARI
-
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     // ------------------------------------------------------------
     // ImageDecoder
@@ -40,9 +39,9 @@ namespace
             return m_header;
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
-            MANGO_UNREFERENCED(palette);
+            MANGO_UNREFERENCED(options);
             MANGO_UNREFERENCED(level);
             MANGO_UNREFERENCED(depth);
             MANGO_UNREFERENCED(face);
@@ -80,13 +79,13 @@ namespace
     // ST helper functions
     // ------------------------------------------------------------
 
-    ColorBGRA convert_atari_color(u16 atari_color)
+    Color convert_atari_color(u16 atari_color)
     {
-        ColorBGRA color;
+        Color color;
 
-        color.b = ((atari_color & 0x7  ) << 5) | ((atari_color & 0x8  ) << 1) | ((atari_color & 0x7  ) << 1) | ((atari_color & 0x8  ) >> 3);
-        color.g = ((atari_color & 0x70 ) << 1) | ((atari_color & 0x80 ) >> 3) | ((atari_color & 0x70 ) >> 3) | ((atari_color & 0x80 ) >> 7);
         color.r = ((atari_color & 0x700) >> 3) | ((atari_color & 0x800) >> 7) | ((atari_color & 0x700) >> 7) | ((atari_color & 0x800) >> 11);
+        color.g = ((atari_color & 0x70 ) << 1) | ((atari_color & 0x80 ) >> 3) | ((atari_color & 0x70 ) >> 3) | ((atari_color & 0x80 ) >> 7);
+        color.b = ((atari_color & 0x7  ) << 5) | ((atari_color & 0x8  ) << 1) | ((atari_color & 0x7  ) << 1) | ((atari_color & 0x8  ) >> 3);
         color.a = 0xff;
 
         return color;
@@ -96,7 +95,7 @@ namespace
     {
         for (int y = 0; y < height; ++y)
         {
-            ColorBGRA* scan = s.address<ColorBGRA>(0, y);
+            Color* scan = s.address<Color>(0, y);
             const u8* src = image + y * width;
 
             for (int x = 0; x < width; ++x)
@@ -195,20 +194,20 @@ namespace
 
         void decode(const Surface& s, Palette& palette, const u8* data, const u8* end)
         {
-            std::vector<u8> tempImage(width * height, 0);
+            Buffer tempImage(width * height, 0);
 
             const int words_per_scan = bitplanes == 1 ? 40 : 80;
 
             if (compressed)
             {
-                std::vector<u8> buffer(32000);
-			    degas_decompress(buffer.data(), data, end, 32000);
+                Buffer buffer(32000);
+			    degas_decompress(buffer, data, end, 32000);
 
                 BigEndianConstPointer p = buffer.data();
 
                 for (int y = 0; y < height; ++y)
                 {
-					u8* image = tempImage.data() + y * width;
+					u8* image = tempImage + y * width;
 
 					for (int j = 0; j < bitplanes; ++j)
                     {
@@ -257,7 +256,7 @@ namespace
                 }
 			}
 
-            resolve_palette(s, width, height, tempImage.data(), palette);
+            resolve_palette(s, width, height, tempImage, palette);
         }
 	};
 
@@ -275,7 +274,7 @@ namespace
             {
                 m_header.width  = m_degas_header.width;
                 m_header.height = m_degas_header.height;
-                m_header.format = Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
+                m_header.format = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
             }
             else
             {
@@ -397,7 +396,7 @@ namespace
             p += 12 + 2 + 2 + 2 + 2 + 2 + 2 + 2 + 66;
 
             const int num_words = 16000;
-            std::vector<u8> buffer(width * height);
+            Buffer buffer(width * height);
 
             for (int i = 0; i < (num_words / bitplanes); ++i)
             {
@@ -426,7 +425,7 @@ namespace
                 }
             }
 
-            resolve_palette(s, width, height, buffer.data(), palette);
+            resolve_palette(s, width, height, buffer, palette);
         }
 	};
 
@@ -444,7 +443,7 @@ namespace
             {
                 m_header.width  = m_neo_header.width;
                 m_header.height = m_neo_header.height;
-                m_header.format = Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
+                m_header.format = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
             }
             else
             {
@@ -575,15 +574,15 @@ namespace
         {
             BigEndianConstPointer p = data;
 
-            std::vector<u8> bitmap(width * height, 0);
-            std::vector<ColorBGRA> palette(16 * 3 * (height - 1), ColorBGRA(0, 0, 0, 0xff));
+            Buffer bitmap(width * height, 0);
+            std::vector<Color> palette(16 * 3 * (height - 1), Color(0, 0, 0, 0xff));
 
             int num_words = 16000;
             int words_per_scan = 20;
 
             if (compressed)
             {
-                std::vector<u8> buffer(31840);
+                Buffer buffer(31840);
                 spu_decompress(buffer.data(), p, 31840, length_of_data_bit_map);
 
                 p = buffer.data();
@@ -683,7 +682,7 @@ namespace
             // Resolve palette
             for (int y = 1; y < height; ++y)
             {
-                ColorBGRA* image = s.address<ColorBGRA>(0, y);
+                Color* image = s.address<Color>(0, y);
 
                 for (int x = 0; x < width; ++x)
                 {
@@ -711,7 +710,7 @@ namespace
             {
                 m_header.width  = m_spu_header.width;
                 m_header.height = m_spu_header.height;
-                m_header.format = Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
+                m_header.format = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
             }
             else
             {
@@ -974,7 +973,7 @@ namespace
                 palette[i] = convert_atari_color(palette_color);
             }
 
-            std::vector<u8> temp;
+            Buffer temp;
             const u8* buffer = p;
 
             if (compressed)
@@ -983,7 +982,7 @@ namespace
                 const u8 initial_value = p.read8();
                 const u16 offset = p.read16() & 0x7fff;
 
-                temp = std::vector<u8>(32000, initial_value);
+                temp.reset(32000, initial_value);
 			    ca_decompress(temp.data(), p, 32000, escape_char, offset);
 
                 buffer = temp.data();
@@ -993,7 +992,7 @@ namespace
             p = buffer;
 
             const int num_words = 16000;
-            std::vector<u8> image(width * height);
+            Buffer image(width * height);
 
             for (int i = 0; i < (num_words / bitplanes); ++i)
             {
@@ -1022,7 +1021,7 @@ namespace
                 }
             }
 
-            resolve_palette(s, width, height, image.data(), palette);
+            resolve_palette(s, width, height, image, palette);
         }
 	};
 
@@ -1040,7 +1039,7 @@ namespace
             {
                 m_header.width  = m_ca_header.width;
                 m_header.height = m_ca_header.height;
-                m_header.format = Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
+                m_header.format = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
             }
             else
             {
@@ -1066,7 +1065,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderATARI()
@@ -1092,6 +1091,4 @@ namespace mango
         registerImageDecoder(createInterfaceCA, ".ca3");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_ATARI
+} // namespace mango::image

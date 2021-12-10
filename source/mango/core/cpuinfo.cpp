@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <algorithm>
 #include <mango/core/cpuinfo.hpp>
@@ -71,6 +71,7 @@ namespace
                     if ((cpuInfo[3] & 0x02000000) != 0) flags |= INTEL_SSE;
                     if ((cpuInfo[3] & 0x04000000) != 0) flags |= INTEL_SSE2;
                     if ((cpuInfo[3] & 0x00008000) != 0) flags |= INTEL_CMOV;
+                    if ((cpuInfo[3] & 0x00800000) != 0) flags |= INTEL_AVX512FP16;
                     // ecx
                     if ((cpuInfo[2] & 0x00000001) != 0) flags |= INTEL_SSE3;
                     if ((cpuInfo[2] & 0x00000200) != 0) flags |= INTEL_SSSE3;
@@ -168,7 +169,7 @@ namespace
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 
-    #if defined(MANGO_CPU_64BIT)
+#if defined(MANGO_CPU_64BIT)
 
     #define AARCH64_HWCAP_FP (1UL << 0)
     #define AARCH64_HWCAP_ASIMD (1UL << 1)
@@ -205,7 +206,7 @@ namespace
 
     u64 getCPUFlagsInternal()
     {
-        u64 flags = ARM_FP16 | ARM_NEON; // default for ARM64
+        u64 flags = ARM_FP16 | ARM_NEON; // defaults for ARM64
 
         long hwcaps = getauxval(AT_HWCAP);
 
@@ -213,11 +214,12 @@ namespace
         if (hwcaps & AARCH64_HWCAP_CRC32) flags |= ARM_CRC32;
         if (hwcaps & AARCH64_HWCAP_SHA1) flags |= ARM_SHA1;
         if (hwcaps & AARCH64_HWCAP_SHA2) flags |= ARM_SHA2;
+        if (hwcaps & AARCH64_HWCAP_PMULL) flags |= ARM_PMULL;
 
         return flags;
     }
 
-    #else
+#else // MANGO_CPU_64BIT
 
     #define ARM_HWCAP_SWP (1UL << 0)
     #define ARM_HWCAP_HALF (1UL << 1)
@@ -263,11 +265,46 @@ namespace
         if (hwcaps2 & ARM_HWCAP2_CRC32) flags |= ARM_CRC32;
         if (hwcaps2 & ARM_HWCAP2_SHA1) flags |= ARM_SHA1;
         if (hwcaps2 & ARM_HWCAP2_SHA2) flags |= ARM_SHA2;
+        if (hwcaps2 & ARM_HWCAP2_PMULL) flags |= ARM_PMULL;
 
         return flags;
     }
 
-    #endif
+#endif // MANGO_CPU_64BIT
+
+#elif defined(MANGO_CPU_ARM)
+
+    // generic ARM (most likely macOS / iOS)
+
+    u64 getCPUFlagsInternal()
+    {
+        u64 flags = 0;
+
+#if defined(MANGO_CPU_64BIT)
+        flags |= ARM_FP16 | ARM_NEON; // defaults for ARM64
+#endif
+
+#ifdef MANGO_ENABLE_NEON
+        flags |= ARM_NEON;
+#endif
+
+#ifdef MANGO_ENABLE_ARM_FP16
+        flags |= ARM_FP16;
+#endif
+
+#if defined(__ARM_FEATURE_CRYPTO)
+        flags |= ARM_AES;
+        flags |= ARM_SHA1;
+        flags |= ARM_SHA2;
+        flags |= ARM_PMULL;
+#endif
+
+#ifdef __ARM_FEATURE_CRC32
+        flags |= ARM_CRC32;
+#endif
+
+        return flags;
+    }
 
 #else
 

@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/endian.hpp>
 #include <mango/image/compression.hpp>
@@ -10,6 +10,7 @@
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     struct BlockFXT
     {
@@ -117,23 +118,23 @@ namespace
         u32 g1 = expand5to8(block.green1);
         u32 r1 = expand5to8(block.red1);
 
-        ColorBGRA color[8];
+        Color color[8];
 
-        color[0] = ColorBGRA(b0, g0, r0, 0xff);
-        color[1] = ColorBGRA((5 * b0 + 1 * b1 + 3) / 6, (5 * g0 + 1 * g1 + 3) / 6, (5 * r0 + 1 * r1 + 3) / 6, 0xff);
-        color[2] = ColorBGRA((4 * b0 + 2 * b1 + 3) / 6, (4 * g0 + 2 * g1 + 3) / 6, (4 * r0 + 2 * r1 + 3) / 6, 0xff);
-        color[3] = ColorBGRA((3 * b0 + 3 * b1 + 3) / 6, (3 * g0 + 3 * g1 + 3) / 6, (3 * r0 + 3 * r1 + 3) / 6, 0xff);
-        color[4] = ColorBGRA((2 * b0 + 4 * b1 + 3) / 6, (2 * g0 + 4 * g1 + 3) / 6, (2 * r0 + 4 * r1 + 3) / 6, 0xff);
-        color[5] = ColorBGRA((1 * b0 + 5 * b1 + 3) / 6, (1 * g0 + 5 * g1 + 3) / 6, (1 * r0 + 5 * r1 + 3) / 6, 0xff);
-        color[6] = ColorBGRA(b1, g1, r1, 0xff);
-        color[7] = ColorBGRA(0, 0, 0, alphaMask);
+        color[0] = Color(r0, g0, b0, 0xff);
+        color[1] = Color((5 * r0 + 1 * r1 + 3) / 6, (5 * g0 + 1 * g1 + 3) / 6, (5 * b0 + 1 * b1 + 3) / 6, 0xff);
+        color[2] = Color((4 * r0 + 2 * r1 + 3) / 6, (4 * g0 + 2 * g1 + 3) / 6, (4 * b0 + 2 * b1 + 3) / 6, 0xff);
+        color[3] = Color((3 * r0 + 3 * r1 + 3) / 6, (3 * g0 + 3 * g1 + 3) / 6, (3 * b0 + 3 * b1 + 3) / 6, 0xff);
+        color[4] = Color((2 * r0 + 4 * r1 + 3) / 6, (2 * g0 + 4 * g1 + 3) / 6, (2 * b0 + 4 * b1 + 3) / 6, 0xff);
+        color[5] = Color((1 * r0 + 5 * r1 + 3) / 6, (1 * g0 + 5 * g1 + 3) / 6, (1 * b0 + 5 * b1 + 3) / 6, 0xff);
+        color[6] = Color(r1, g1, b1, 0xff);
+        color[7] = Color(0, 0, 0, alphaMask);
 
         u64 indices0 = uload64le(block.indices + 0);
         u64 indices1 = uload64le(block.indices + 6);
 
         for (int y = 0; y < 4; ++y)
         {
-            ColorBGRA* dest = reinterpret_cast<ColorBGRA *>(out + y * stride);
+            Color* dest = reinterpret_cast<Color *>(out + y * stride);
 
             // left 4x4 block
             dest[0] = color[(indices0 >> 0) & 7];
@@ -169,19 +170,19 @@ namespace
         u32 g3 = expand5to8(block.green3);
         u32 r3 = expand5to8(block.red3);
 
-        ColorBGRA color[4];
+        Color color[4];
 
-        color[0] = ColorBGRA(b0, g0, r0, 0xff);
-        color[1] = ColorBGRA(b1, g1, r1, 0xff);
-        color[2] = ColorBGRA(b2, g2, r2, 0xff);
-        color[3] = ColorBGRA(b3, g3, r3, 0xff);
+        color[0] = Color(r0, g0, b0, 0xff);
+        color[1] = Color(r1, g1, b1, 0xff);
+        color[2] = Color(r2, g2, b2, 0xff);
+        color[3] = Color(r3, g3, b3, 0xff);
 
         u32 indices0 = uload32le(block.indices + 0);
         u32 indices1 = uload32le(block.indices + 4);
 
         for (int y = 0; y < 4; ++y)
         {
-            ColorBGRA* dest = reinterpret_cast<ColorBGRA *>(out + y * stride);
+            Color* dest = reinterpret_cast<Color *>(out + y * stride);
 
             // left 4x4 block
             dest[0] = color[(indices0 >> 0) & 3];
@@ -216,15 +217,15 @@ namespace
         u32 r2 = expand5to8(block.red2);
         u32 a2 = expand5to8(block.alpha2) | alphaMask;
 
-        ColorBGRA color[8];
+        Color color[8];
 
         if (!block.lerp)
         {
             // colors for left 4x4 block
-            color[0] = ColorBGRA(b0, g0, r0, a0);
-            color[1] = ColorBGRA(b1, g1, r1, a1);
-            color[2] = ColorBGRA(b2, g2, r2, a2);
-            color[3] = ColorBGRA(0, 0, 0, alphaMask);
+            color[0] = Color(r0, g0, b0, a0);
+            color[1] = Color(r1, g1, b1, a1);
+            color[2] = Color(r2, g2, b2, a2);
+            color[3] = Color(0, 0, 0, alphaMask);
 
             // colors for right 4x4 block
             color[4] = color[0];
@@ -235,16 +236,16 @@ namespace
         else
         {
             // colors for left 4x4 block
-            color[0] = ColorBGRA(b0, g0, r0, a0);
-            color[1] = ColorBGRA((2 * b0 + b1 + 1) / 3, (2 * g0 + g1 + 1) / 3, (2 * r0 + r1 + 1) / 3, (2 * a0 + a1 + 1) / 3);
-            color[2] = ColorBGRA((b0 + 2 * b1 + 1) / 3, (g0 + 2 * g1 + 1) / 3, (r0 + 2 * r1 + 1) / 3, (a0 + 2 * a1 + 1) / 3);
-            color[3] = ColorBGRA(b1, g1, r1, a1);
+            color[0] = Color(r0, g0, b0, a0);
+            color[1] = Color((2 * r0 + r1 + 1) / 3, (2 * g0 + g1 + 1) / 3, (2 * b0 + b1 + 1) / 3, (2 * a0 + a1 + 1) / 3);
+            color[2] = Color((r0 + 2 * r1 + 1) / 3, (g0 + 2 * g1 + 1) / 3, (b0 + 2 * b1 + 1) / 3, (a0 + 2 * a1 + 1) / 3);
+            color[3] = Color(r1, g1, b1, a1);
 
             // colors for right 4x4 block
-            color[4] = ColorBGRA(b2, g2, r2, a2);
-            color[5] = ColorBGRA((2 * b2 + b1 + 1) / 3, (2 * g2 + g1 + 1) / 3, (2 * r2 + r1 + 1) / 3, (2 * a2 + a1 + 1) / 3);
-            color[6] = ColorBGRA((b2 + 2 * b1 + 1) / 3, (g2 + 2 * g1 + 1) / 3, (r2 + 2 * r1 + 1) / 3, (a2 + 2 * a1 + 1) / 3);
-            color[7] = ColorBGRA(b1, g1, r1, a1);
+            color[4] = Color(r2, g2, b2, a2);
+            color[5] = Color((2 * r2 + r1 + 1) / 3, (2 * g2 + g1 + 1) / 3, (2 * b2 + b1 + 1) / 3, (2 * a2 + a1 + 1) / 3);
+            color[6] = Color((r2 + 2 * r1 + 1) / 3, (g2 + 2 * g1 + 1) / 3, (b2 + 2 * b1 + 1) / 3, (a2 + 2 * a1 + 1) / 3);
+            color[7] = Color(r1, g1, b1, a1);
         }
 
         u32 indices0 = uload32le(block.indices + 0);
@@ -252,7 +253,7 @@ namespace
 
         for (int y = 0; y < 4; ++y)
         {
-            ColorBGRA* dest = reinterpret_cast<ColorBGRA *>(out + y * stride);
+            Color* dest = reinterpret_cast<Color *>(out + y * stride);
 
             // left 4x4 block
             dest[0] = color[0 + ((indices0 >> 0) & 3)];
@@ -272,7 +273,7 @@ namespace
 
     void decode_mixed(u8* out, size_t stride, const BlockMIXED& block, u8 alphaMask)
     {
-        ColorBGRA color[8];
+        Color color[8];
 
         if (!block.alpha)
         {
@@ -296,16 +297,16 @@ namespace
             u32 r3 = expand5to8(block.red3);
 
             // colors for left 4x4 block
-            color[0] = ColorBGRA(b0, g0, r0, 0xff);
-            color[1] = ColorBGRA((2 * b0 + b1 + 1) / 3, (2 * g0 + g1 + 1) / 3, (2 * r0 + r1 + 1) / 3, 0xff);
-            color[2] = ColorBGRA((b0 + 2 * b1 + 1) / 3, (g0 + 2 * g1 + 1) / 3, (r0 + 2 * r1 + 1) / 3, 0xff);
-            color[3] = ColorBGRA(b1, g1, r1, 0xff);
+            color[0] = Color(r0, g0, b0, 0xff);
+            color[1] = Color((2 * r0 + r1 + 1) / 3, (2 * g0 + g1 + 1) / 3, (2 * b0 + b1 + 1) / 3, 0xff);
+            color[2] = Color((r0 + 2 * r1 + 1) / 3, (g0 + 2 * g1 + 1) / 3, (b0 + 2 * b1 + 1) / 3, 0xff);
+            color[3] = Color(r1, g1, b1, 0xff);
 
             // colors for right 4x4 block
-            color[4] = ColorBGRA(b2, g2, r2, 0xff);
-            color[1] = ColorBGRA((2 * b2 + b3 + 1) / 3, (2 * g2 + g3 + 1) / 3, (2 * r2 + r3 + 1) / 3, 0xff);
-            color[2] = ColorBGRA((b2 + 2 * b3 + 1) / 3, (g2 + 2 * g3 + 1) / 3, (r2 + 2 * r3 + 1) / 3, 0xff);
-            color[7] = ColorBGRA(b3, g3, r3, 0xff);
+            color[4] = Color(r2, g2, b2, 0xff);
+            color[1] = Color((2 * r2 + r3 + 1) / 3, (2 * g2 + g3 + 1) / 3, (2 * b2 + b3 + 1) / 3, 0xff);
+            color[2] = Color((r2 + 2 * r3 + 1) / 3, (g2 + 2 * g3 + 1) / 3, (b2 + 2 * b3 + 1) / 3, 0xff);
+            color[7] = Color(r3, g3, b3, 0xff);
         }
         else
         {
@@ -326,16 +327,16 @@ namespace
             u32 r3 = expand5to8(block.red3);
 
             // colors for left 4x4 block
-            color[0] = ColorBGRA(b0, g0, r0, 0xff);
-            color[1] = ColorBGRA((b0 + b1) / 2, (g0 + g1) / 2, (r0 + r1) / 2, 0xff);
-            color[2] = ColorBGRA(b1, g1, r1, 0xff);
-            color[3] = ColorBGRA(0, 0, 0, alphaMask);
+            color[0] = Color(r0, g0, b0, 0xff);
+            color[1] = Color((r0 + r1) / 2, (g0 + g1) / 2, (b0 + b1) / 2, 0xff);
+            color[2] = Color(r1, g1, b1, 0xff);
+            color[3] = Color(0, 0, 0, alphaMask);
 
             // colors for right 4x4 block
-            color[4] = ColorBGRA(b2, g2, r2, 0xff);
-            color[5] = ColorBGRA((b2 + b3) / 2, (g2 + g3) / 2, (r2 + r3) / 2, 0xff);
-            color[6] = ColorBGRA(b3, g3, r3, 0xff);
-            color[7] = ColorBGRA(0, 0, 0, alphaMask);
+            color[4] = Color(r2, g2, b2, 0xff);
+            color[5] = Color((r2 + r3) / 2, (g2 + g3) / 2, (b2 + b3) / 2, 0xff);
+            color[6] = Color(r3, g3, b3, 0xff);
+            color[7] = Color(0, 0, 0, alphaMask);
         }
 
         u32 indices0 = uload32le(block.indices + 0);
@@ -343,7 +344,7 @@ namespace
 
         for (int y = 0; y < 4; ++y)
         {
-            ColorBGRA* dest = reinterpret_cast<ColorBGRA *>(out + y * stride);
+            Color* dest = reinterpret_cast<Color *>(out + y * stride);
 
             // left 4x4 block
             dest[0] = color[0 + ((indices0 >> 0) & 3)];
@@ -388,7 +389,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void decode_block_fxt1_rgb(const TextureCompressionInfo& info, u8* out, const u8* in, size_t stride)
@@ -405,4 +406,4 @@ namespace mango
         decode_fxt1(out, stride, block, 0);
     }
 
-} // namespace mango
+} // namespace mango::image

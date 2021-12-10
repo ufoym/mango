@@ -1,17 +1,16 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/pointer.hpp>
 #include <mango/core/buffer.hpp>
 #include <mango/core/system.hpp>
 #include <mango/image/image.hpp>
 
-#ifdef MANGO_ENABLE_IMAGE_PCX
-
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     // ------------------------------------------------------------
     // .pcx parser
@@ -87,7 +86,7 @@ namespace
             header.levels  = 0;
             header.faces   = 0;
 			header.palette = isPaletteMarker || (BitsPerPixel == 1 && NPlanes == 4);
-            header.format  = Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
+            header.format  = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
             header.compression = TextureCompression::NONE;
         }
 
@@ -180,9 +179,9 @@ namespace
 
             for (int x = 0; x < width; ++x)
             {
-                dest[0] = src[sn * 2];
+                dest[0] = src[sn * 0];
                 dest[1] = src[sn * 1];
-                dest[2] = src[sn * 0];
+                dest[2] = src[sn * 2];
                 dest[3] = 0xff;
                 dest += 4;
                 ++src;
@@ -209,9 +208,9 @@ namespace
 
             for (int x = 0; x < width; ++x)
             {
-                dest[0] = src[sn * 2];
+                dest[0] = src[sn * 0];
                 dest[1] = src[sn * 1];
-                dest[2] = src[sn * 0];
+                dest[2] = src[sn * 2];
                 dest[3] = src[sn * 3];
                 dest += 4;
                 ++src;
@@ -246,7 +245,7 @@ namespace
             return m_header.header;
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* ptr_palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
             MANGO_UNREFERENCED(level);
             MANGO_UNREFERENCED(depth);
@@ -268,8 +267,8 @@ namespace
             Bitmap temp(width, height, format);
 
             // RLE scanline buffer
-            int bytesPerLine = m_header.BytesPerLine;
-            if (!bytesPerLine) bytesPerLine = width * ceil_div(m_header.BitsPerPixel, 8);
+            int bytesPerLine = m_header.BytesPerLine ? m_header.BytesPerLine
+                                                     : width * ceil_div(m_header.BitsPerPixel, 8);
             int scansize = m_header.NPlanes * bytesPerLine;
 
             Buffer buffer(scansize * height);
@@ -290,13 +289,13 @@ namespace
                             const u8* pal = m_header.ColorMap;
                             for (u32 i = 0; i < palette.size; ++i)
                             {
-                                palette[i] = ColorBGRA(pal[0], pal[1], pal[2], 0xff);
+                                palette[i] = Color(pal[0], pal[1], pal[2], 0xff);
                                 pal += 3;
                             }
 
-                            if (ptr_palette)
+                            if (options.palette)
                             {
-                                *ptr_palette = palette;
+                                *options.palette = palette;
                                 decode4(dest, buffer, scansize);
                             }
                             else
@@ -349,13 +348,13 @@ namespace
                                 const u8* pal = m_memory.address + m_memory.size - 768;
                                 for (u32 i = 0; i < palette.size; ++i)
                                 {
-                                    palette[i] = ColorBGRA(pal[0], pal[1], pal[2], 0xff);
+                                    palette[i] = Color(pal[0], pal[1], pal[2], 0xff);
                                     pal += 3;
                                 }
 
-                                if (ptr_palette)
+                                if (options.palette)
                                 {
-                                    *ptr_palette = palette;
+                                    *options.palette = palette;
                                     decode8(dest, buffer, scansize);
                                 }
                                 else
@@ -410,7 +409,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderPCX()
@@ -418,6 +417,4 @@ namespace mango
         registerImageDecoder(createInterface, ".pcx");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_PCX
+} // namespace mango::image

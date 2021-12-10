@@ -69,18 +69,6 @@ OPTION(ENABLE_BMI           "Enable BMI"                                OFF)
 OPTION(ENABLE_BMI2          "Enable BMI2"                               OFF)
 OPTION(ENABLE_FMA           "Enable FMA"                                OFF)
 
-OPTION(MANGO_DISABLE_LICENSE_GPL "" OFF)
-
-set(MANGO_ALL_ARCHIVE_FORMATS ZIP; RAR; MGX)
-foreach(format ${MANGO_ALL_ARCHIVE_FORMATS})
-  OPTION(MANGO_DISABLE_ARCHIVE_${format} "" OFF)
-endforeach()
-
-set(MANGO_ALL_IMAGE_FORMATS ASTC; ATARI; BMP; C64; DDS; GIF; HDR; IFF; JPG; KTX; PCX; PKM; PNG; PNM; PVR; SGI; TGA; WEBP; ZPNG)
-foreach(format ${MANGO_ALL_IMAGE_FORMATS})
-  OPTION(MANGO_DISABLE_IMAGE_${format} "" OFF)
-endforeach()
-
 # ------------------------------------------------------------------------------
 # include directories
 # ------------------------------------------------------------------------------
@@ -109,9 +97,6 @@ if (WIN32)
         "${CMAKE_CURRENT_SOURCE_DIR}/../include/mango/opengl/*.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/opengl/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/opengl/wgl/*.cpp")
-    FILE(GLOB FRAMEBUFFER
-        "${CMAKE_CURRENT_SOURCE_DIR}/../include/mango/framebuffer/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/framebuffer/win32/*.cpp")
 
 elseif (APPLE)
 
@@ -130,9 +115,6 @@ elseif (APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}/../include/mango/opengl/*.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/opengl/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/opengl/cocoa/*.mm")
-    FILE(GLOB FRAMEBUFFER
-        "${CMAKE_CURRENT_SOURCE_DIR}/../include/mango/framebuffer/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/framebuffer/cocoa/*.mm")
 
 else()
 
@@ -151,9 +133,6 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/../include/mango/opengl/*.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/opengl/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/opengl/glx/*.cpp")
-    FILE(GLOB FRAMEBUFFER
-        "${CMAKE_CURRENT_SOURCE_DIR}/../include/mango/framebuffer/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/framebuffer/xlib/*.cpp")
 
 endif()
 
@@ -168,9 +147,6 @@ FILE(GLOB MATH
 FILE(GLOB SIMD
     "${CMAKE_CURRENT_SOURCE_DIR}/../include/mango/simd/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/simd/*.cpp")
-FILE(GLOB VULKAN
-    "${CMAKE_CURRENT_SOURCE_DIR}/../include/mango/vulkan/*.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../source/mango/vulkan/*.cpp")
 
 SOURCE_GROUP("core" FILES ${CORE})
 SOURCE_GROUP("filesystem" FILES ${FILESYSTEM})
@@ -180,8 +156,6 @@ SOURCE_GROUP("math" FILES ${MATH})
 SOURCE_GROUP("simd" FILES ${SIMD})
 SOURCE_GROUP("window" FILES ${WINDOW})
 SOURCE_GROUP("opengl" FILES ${OPENGL})
-SOURCE_GROUP("vulkan" FILES ${VULKAN})
-SOURCE_GROUP("framebuffer" FILES ${FRAMEBUFFER})
 
 FILE(GLOB EXTERNAL_LZMA
     "${CMAKE_CURRENT_SOURCE_DIR}/../source/external/lzma/*.h"
@@ -253,7 +227,7 @@ SOURCE_GROUP("external" FILES
 # libraries
 # ------------------------------------------------------------------------------
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ADD_LIBRARY(mango
@@ -279,34 +253,19 @@ ADD_LIBRARY(mango
     ${EXTERNAL_ZPNG}
 )
 
-ADD_LIBRARY(mango-framebuffer
-    ${WINDOW}
-    ${FRAMEBUFFER}
-)
-
 ADD_LIBRARY(mango-opengl
     ${WINDOW}
     ${OPENGL}
 )
 
-ADD_LIBRARY(mango-vulkan
-    ${WINDOW}
-    ${VULKAN}
-)
-
-target_link_libraries(mango-framebuffer PUBLIC mango)
 target_link_libraries(mango-opengl PUBLIC mango)
-target_link_libraries(mango-vulkan PUBLIC mango)
 
 if (APPLE)
     if (BUILD_SHARED_LIBS)
-        target_link_libraries(mango-framebuffer PUBLIC "-framework Cocoa")
         target_link_libraries(mango-opengl PUBLIC "-framework Cocoa" "-framework OpenGL")
-        target_link_libraries(mango-vulkan PUBLIC "-framework Cocoa")
     endif ()
 
     target_compile_options(mango PUBLIC "-mmacosx-version-min=10.13")
-    target_compile_options(mango-framebuffer PUBLIC "-mmacosx-version-min=10.13")
     target_compile_options(mango-opengl PUBLIC "-mmacosx-version-min=10.13")
 endif ()
 
@@ -355,7 +314,10 @@ else ()
     if ((ARM AND ENABLE_NEON) OR AARCH64)
         message(STATUS "SIMD: NEON")
         if (ARM)
-            add_definitions (-mfpu=neon -mfloat-abi=hard)
+            if (!APPLE)
+                # The compiler for Apple Mx CPUs don't recognize these
+                add_definitions (-mfpu=neon -mfloat-abi=hard)
+            endif()
             set(CMAKE_CXX_FLAGS "-fpermissive -Wno-psabi")
         endif ()
     endif ()
@@ -414,28 +376,6 @@ else ()
     endif ()
 endif ()
 
-# licenses
-
-if (MANGO_DISABLE_LICENSE_GPL)
-  target_compile_definitions(mango PUBLIC "-DMANGO_DISABLE_LICENSE_GPL")
-endif ()
-
-# archivers
-
-foreach(format ${MANGO_ALL_ARCHIVE_FORMATS})
-  if(MANGO_DISABLE_ARCHIVE_${format})
-    target_compile_definitions(mango PUBLIC "-DMANGO_DISABLE_ARCHIVE_${format}")
-  endif()
-endforeach()
-
-# image codecs
-
-foreach(format ${MANGO_ALL_IMAGE_FORMATS})
-  if(MANGO_DISABLE_IMAGE_${format})
-    target_compile_definitions(mango PUBLIC "-DMANGO_DISABLE_IMAGE_${format}")
-  endif()
-endforeach()
-
 # ------------------------------------------------------------------------------
 # install
 # ------------------------------------------------------------------------------
@@ -451,17 +391,7 @@ INSTALL(TARGETS mango
     RUNTIME DESTINATION "bin"
 )
 
-INSTALL(TARGETS mango-framebuffer
-    LIBRARY DESTINATION "lib"
-    ARCHIVE DESTINATION "lib"
-    RUNTIME DESTINATION "bin"
-)
 INSTALL(TARGETS mango-opengl
-    LIBRARY DESTINATION "lib"
-    ARCHIVE DESTINATION "lib"
-    RUNTIME DESTINATION "bin"
-)
-INSTALL(TARGETS mango-vulkan
     LIBRARY DESTINATION "lib"
     ARCHIVE DESTINATION "lib"
     RUNTIME DESTINATION "bin"

@@ -1,17 +1,16 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <cstring>
 #include <mango/core/pointer.hpp>
 #include <mango/core/system.hpp>
 #include <mango/image/image.hpp>
 
-#ifdef MANGO_ENABLE_IMAGE_KTX
-
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     // KTX Format Specification:
     // http://www.khronos.org/opengles/sdk/tools/KTX/file_format_spec/
@@ -665,9 +664,9 @@ namespace
             return data;
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
-            MANGO_UNREFERENCED(palette);
+            MANGO_UNREFERENCED(options);
 
             ImageDecodeStatus status;
 
@@ -720,7 +719,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderKTX()
@@ -728,6 +727,4 @@ namespace mango
         registerImageDecoder(createInterface, ".ktx");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_KTX
+} // namespace mango::image

@@ -1,16 +1,15 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/system.hpp>
 #include <mango/core/pointer.hpp>
 #include <mango/image/image.hpp>
 
-#ifdef MANGO_ENABLE_IMAGE_DDS
-
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
 	// ------------------------------------------------------------
     // .dds information
@@ -1086,9 +1085,9 @@ namespace
             return m_header.getMemory(level, depth, face);
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
-            MANGO_UNREFERENCED(palette);
+            MANGO_UNREFERENCED(options);
 
             ImageDecodeStatus status;
 
@@ -1143,7 +1142,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderDDS()
@@ -1151,6 +1150,4 @@ namespace mango
         registerImageDecoder(createInterface, ".dds");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_DDS
+} // namespace mango::image

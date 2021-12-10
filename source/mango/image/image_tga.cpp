@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/core.hpp>
 #include <mango/core/pointer.hpp>
@@ -8,14 +8,13 @@
 #include <mango/core/string.hpp>
 #include <mango/image/image.hpp>
 
-#ifdef MANGO_ENABLE_IMAGE_TGA
-
 // Specification:
 // https://www.fileformat.info/format/tga/egff.htm
 
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
 	// ------------------------------------------------------------
 	// header
@@ -43,7 +42,7 @@ namespace
     struct HeaderTGA
     {
         u8   id_length;
-        u8   colormap_type;
+        u8   colormap_type; // 0 - no palette, 1 - palette
         u8   image_type;
         u16  colormap_origin;
         u16  colormap_length;
@@ -73,6 +72,7 @@ namespace
             descriptor       = p.read8();
 
             debugPrint("  image_type:    %d\n", image_type);
+            debugPrint("  pixel_size:    %d\n", pixel_size);
             debugPrint("  colormap_type: %d\n", colormap_type);
             debugPrint("  colormap_bits: %d\n", colormap_bits);
             debugPrint("  colormap:      [%d, %d]\n", colormap_origin, colormap_origin + colormap_length);
@@ -107,38 +107,31 @@ namespace
 
             if (!colormap_type)
             {
-                if (colormap_origin || colormap_length || colormap_bits)
-                {
-                    error = makeString("[ImageDecoder.TGA] Incorrect colormap.");
-                    return nullptr;
-                }
+                // no colormap
             }
-            else if (colormap_type > 1)
+            else
             {
-                // NOTE: This is allowed to be > 1 but we don't know how to read such custom type anyway
-                error = makeString("[ImageDecoder.TGA] Invalid colormap type (%d).", colormap_type);
-                return nullptr;
-            }
-
-            if (isPalette())
-            {
-                // palette
-                if (colormap_origin + colormap_length > 256)
+                if (isPalette())
                 {
-                    error = makeString("[ImageDecoder.TGA] Invalid colormap (origin: %d, length: %d).", colormap_origin, colormap_length);
-                    return nullptr;
-                }
+                    // palette
+                    if (colormap_origin + colormap_length > 256)
+                    {
+                        error = makeString("[ImageDecoder.TGA] Invalid colormap (origin: %d, length: %d).", colormap_origin, colormap_length);
+                        return nullptr;
+                    }
 
-                if (colormap_bits != 16 && 
-                    colormap_bits != 24 &&
-                    colormap_bits != 32)
-                {
-                    error = makeString("[ImageDecoder.TGA] Invalid colormap bits (%d).", colormap_bits);
-                    return nullptr;
+                    if (colormap_bits != 15 &&
+                        colormap_bits != 16 &&
+                        colormap_bits != 24 &&
+                        colormap_bits != 32)
+                    {
+                        error = makeString("[ImageDecoder.TGA] Invalid colormap bits (%d).", colormap_bits);
+                        return nullptr;
+                    }
                 }
             }
 
-            /* This is one part of specification we will not enforce
+            /*
             if (width > 512 || height > 482)
             {
                 error = makeString("[ImageDecoder.TGA] Incorrect image dimensions: %d x %d (maximum: 512 x 482).", width, height);
@@ -195,7 +188,7 @@ namespace
                     if (isPalette())
                     {
                         // expand palette to 32 bits
-                        format = Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
+                        format = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
                     }
                     else
                     {
@@ -231,7 +224,9 @@ namespace
         for ( ; y < height; )
         {
             if (p >= end)
+            {
                 return false;
+            }
 
             u8 sample = *p++;
             int count = (sample & 0x7f) + 1;
@@ -247,12 +242,16 @@ namespace
                 // clip to right edge
                 const int size = std::min(count, width - x);
                 if (!size)
+                {
                     return false;
+                }
 
                 if (sample & 0x80)
                 {
-                    if (color + size * bpp >= end)
+                    if (color + bpp > end)
+                    {
                         return false;
+                    }
 
                     // repeat color
                     for (int i = 0; i < size; ++i)
@@ -267,8 +266,10 @@ namespace
                 else
                 {
                     int bytes = size * bpp;
-                    if (color + bytes >= end)
+                    if (color + bytes > end)
+                    {
                         return false;
+                    }
 
                     std::memcpy(scan, color, bytes);
                     p += bytes;
@@ -333,7 +334,7 @@ namespace
             return m_header;
         }
 
-        ImageDecodeStatus decode(const Surface& surface, Palette* ptr_palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& surface, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
             MANGO_UNREFERENCED(level);
             MANGO_UNREFERENCED(depth);
@@ -386,7 +387,7 @@ namespace
                             r = (r * 255) / 31;
                             g = (g * 255) / 31;
                             b = (b * 255) / 31;
-                            palette[origin + i] = ColorBGRA(r, g, b, 0xff);
+                            palette[origin + i] = Color(r, g, b, 0xff);
                             p += 2;
                         }
                     }
@@ -394,7 +395,7 @@ namespace
                     {
                         for (u32 i = 0; i < length; ++i)
                         {
-                            palette[origin + i] = ColorBGRA(p[2], p[1], p[0], 0xff);
+                            palette[origin + i] = Color(p[2], p[1], p[0], 0xff);
                             p += 3;
                         }
                     }
@@ -402,7 +403,7 @@ namespace
                     {
                         for (u32 i = 0; i < length; ++i)
                         {
-                            palette[origin + i] = ColorBGRA(p[2], p[1], p[0], p[3]);
+                            palette[origin + i] = Color(p[2], p[1], p[0], p[3]);
                             p += 4;
                         }
                     }
@@ -438,13 +439,14 @@ namespace
                 dest.stride = 0 - surface.stride;
             }
 
-		    std::unique_ptr<u8[]> temp;
             const u8* data = p;
             const u8* end = m_memory.address + m_memory.size;
 
+		    std::unique_ptr<u8[]> temp;
+
             if (m_targa_header.isRLE())
             {
-                temp.reset(new u8[width * height * bpp]);
+                temp = std::make_unique<u8[]>(width * height * bpp);
                 if (!tga_decompress_RLE(temp.get(), p, end, width, height, bpp))
                 {
                     status.setError("[ImageDecoder.TGA] RLE decoding error.");
@@ -467,18 +469,18 @@ namespace
                 case IMAGETYPE_PALETTE:
                 case IMAGETYPE_RLE_PALETTE:
                 {
-                    if (ptr_palette)
+                    if (options.palette)
                     {
-                        *ptr_palette = palette;
+                        *options.palette = palette;
                         dest.blit(0, 0, Surface(width, height, LuminanceFormat(8, Format::UNORM, 8, 0), width, data));
                     }
                     else
                     {
-                        Bitmap bitmap(width, height, Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8));
+                        Bitmap bitmap(width, height, Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8));
 
                         for (int y = 0; y < height; ++y)
                         {
-                            ColorBGRA* d = bitmap.address<ColorBGRA>(0, y);
+                            Color* d = bitmap.address<Color>(0, y);
                             const u8* s = data + y * width;
                             for (int x = 0; x < width; ++x)
                             {
@@ -567,7 +569,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderTGA()
@@ -576,6 +578,4 @@ namespace mango
         registerImageEncoder(imageEncode, ".tga");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_TGA
+} // namespace mango::image

@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 /*
 	The lzw_decode() function is based on Jean-Marc Lienher / STB decoder.
@@ -11,11 +11,10 @@
 #include <mango/core/system.hpp>
 #include <mango/image/image.hpp>
 
-#ifdef MANGO_ENABLE_IMAGE_GIF
-
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
 	// ------------------------------------------------------------
 	// decoder
@@ -224,7 +223,7 @@ namespace
 							return nullptr;
 						}
 
-						p->prefix = (s16) oldcode;
+						p->prefix = s16(oldcode);
 						p->first = codes[oldcode].first;
 						p->suffix = (code == available) ? p->first : codes[code].first;
 					}
@@ -242,9 +241,9 @@ namespace
 					// resolve symbols
 					for (;;)
 					{
-						u8 sample = codes[code].suffix;
 						if (dest < dest_end)
 						{
+							u8 sample = codes[code].suffix;
 							*dest++ = sample;
 						}
 
@@ -320,8 +319,7 @@ namespace
 		for (int x = 0; x < width; ++x)
 		{
 			u8 sample = src[x];
-			ColorBGRA color = palette[sample];
-			dest[x] = color;
+			dest[x] = palette[sample];
 		}
 	}
 
@@ -334,8 +332,7 @@ namespace
 			u8 sample = src[x];
 			if (sample != transparent)
 			{
-				ColorBGRA color = palette[sample];
-				dest[x] = color;
+				dest[x] = palette[sample];
 			}
 		}
 	}
@@ -360,7 +357,7 @@ namespace
             	u32 r = image_desc.palette[i * 3 + 0];
             	u32 g = image_desc.palette[i * 3 + 1];
             	u32 b = image_desc.palette[i * 3 + 2];
-            	palette[i] = ColorBGRA(r, g, b, 0xff);
+            	palette[i] = Color(r, g, b, 0xff);
 			}
 		}
 		else
@@ -373,7 +370,7 @@ namespace
             	u32 r = state.screen_desc.palette[i * 3 + 0];
             	u32 g = state.screen_desc.palette[i * 3 + 1];
             	u32 b = state.screen_desc.palette[i * 3 + 2];
-            	palette[i] = ColorBGRA(r, g, b, 0xff);
+            	palette[i] = Color(r, g, b, 0xff);
 			}
 		}
 
@@ -510,14 +507,12 @@ namespace
 		return data;
     }
 
-    const u8* read_chunks(const u8* data, const u8* end,
-						  gif_state& state,
-	                      Surface& surface, Palette* ptr_palette)
+    const u8* read_chunks(const u8* data, const u8* end, gif_state& state, Surface& surface, Palette* ptr_palette)
     {
         while (data < end)
 		{
 			u8 chunkID = *data++;
-			debugPrint("  chunkID: %x\n", (int)chunkID);
+			debugPrint("  chunkID: %x\n", int(chunkID));
 			switch (chunkID)
 			{
 				case GIF_EXTENSION:
@@ -574,7 +569,7 @@ namespace
 				m_header.levels  = 0;
 				m_header.faces   = 0;
 				m_header.palette = true;
-				m_header.format  = Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
+				m_header.format  = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
 				m_header.compression = TextureCompression::NONE;
 
 				m_image.reset(new u8[m_header.width * m_header.height * 4]);
@@ -590,7 +585,7 @@ namespace
             return m_header;
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* ptr_palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
             MANGO_UNREFERENCED(level);
             MANGO_UNREFERENCED(depth);
@@ -604,8 +599,8 @@ namespace
                 return status;
             }
 
-			Format format = ptr_palette ? LuminanceFormat(8, Format::UNORM, 8, 0)
-			                            : Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
+			Format format = options.palette ? LuminanceFormat(8, Format::UNORM, 8, 0)
+			                                : Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
 
 			size_t stride = m_header.width * format.bytes();
 			Surface target(m_header.width, m_header.height, format, stride, m_image.get());
@@ -615,7 +610,7 @@ namespace
 			if (m_data)
 			{
 				m_state.first_frame = status.current_frame_index == 0;
-				m_data = read_chunks(m_data, m_end, m_state, target, ptr_palette);
+				m_data = read_chunks(m_data, m_end, m_state, target, options.palette);
 				m_frame_counter += (m_data != nullptr);
 			}
 
@@ -709,7 +704,7 @@ namespace
 		}
 	};
 
-	void gif_encode_image_block(LittleEndianStream& s, int depth, int width, int height, size_t stride, u8* image)
+	void gif_encode_image_block(LittleEndianStream& s, int depth, Surface surface)
 	{
 		const int minCodeSize = depth;
 		const u32 clearCode = 1 << depth;
@@ -726,11 +721,11 @@ namespace
 
 		state.writeBits(s, clearCode, codeSize); // start with a fresh LZW dictionary
 
-		for (int y = 0; y < height; ++y)
+		for (int y = 0; y < surface.height; ++y)
 		{
-			u8* scan = image + y * stride;
+			u8* scan = surface.address(0, y);
 
-			for (int x = 0; x < width; ++x)
+			for (int x = 0; x < surface.width; ++x)
 			{
 				u8 nextValue = scan[x];
 
@@ -758,6 +753,7 @@ namespace
 						// we need more bits for codes
 						codeSize++;
 					}
+
 					if (maxCode == 4095)
 					{
 						// the dictionary is full, clear it out and begin anew
@@ -784,19 +780,14 @@ namespace
 
 	void gif_encode_file(Stream& stream, const Surface& surface, const Palette& palette)
 	{
-		int width = surface.width;
-		int height = surface.height;
-		size_t stride = surface.stride;
-		u8* image = surface.image;
-
 		LittleEndianStream s = stream;
 
 		// identifier
 		s.write("GIF89a", 6);
 
 		// screen descriptor
-		s.write16(width);
-		s.write16(height);
+		s.write16(surface.width);
+		s.write16(surface.height);
 
 		u8 packed = 0;
 		packed |= 0x7; // color table size as log2(size) - 1 (0 -> 2 colors, 7 -> 256 colors)
@@ -825,14 +816,14 @@ namespace
 
 			s.write16(0);
 			s.write16(0);
-			s.write16(width);
-			s.write16(height);
+			s.write16(surface.width);
+			s.write16(surface.height);
 
 			// local palette
 			u8 field = 0;
 			s.write8(field);
 
-			gif_encode_image_block(s, 8, width, height, stride, image);
+			gif_encode_image_block(s, 8, surface);
 		}
 
 		// end of file
@@ -874,7 +865,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderGIF()
@@ -883,6 +874,4 @@ namespace mango
         registerImageEncoder(imageEncode, ".gif");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_GIF
+} // namespace mango::image

@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2019 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #pragma once
 
@@ -8,58 +8,74 @@
 #include <limits>
 #include <algorithm>
 #include <mango/core/configure.hpp>
-#include <mango/core/object.hpp>
 
-namespace mango {
-namespace detail {
+namespace mango
+{
 
-    template <typename T>
-    struct Memory
+    namespace detail
     {
-        T* address;
-        size_t size;
 
-        Memory()
-            : address(nullptr)
-            , size(0)
+        template <typename T>
+        struct Memory
         {
-        }
+            T* address;
+            size_t size;
 
-        Memory(T* address, size_t bytes)
-            : address(address)
-            , size(bytes)
-        {
-        }
-
-        operator T* () const
-        {
-            return address;
-        }
-
-        template <typename S>
-        operator Memory<S> () const
-        {
-            return Memory<S>(address, size);
-        }
-
-        template <typename S>
-        S* cast() const
-        {
-            return reinterpret_cast<S*>(address);
-        }
-
-        Memory slice(size_t slice_offset, size_t slice_size = 0) const
-        {
-            Memory memory(address + slice_offset, size - slice_offset);
-            if (slice_size)
+            Memory()
+                : address(nullptr)
+                , size(0)
             {
-                memory.size = std::min(memory.size, slice_size);
             }
-            return memory;
-        }
-    };
 
-} // namespace detail
+            Memory(T* address, size_t bytes)
+                : address(address)
+                , size(bytes)
+            {
+            }
+
+            operator T* () const
+            {
+                return address;
+            }
+
+            template <typename S>
+            operator Memory<S> () const
+            {
+                return Memory<S>(address, size);
+            }
+
+            template <typename S>
+            S* cast() const
+            {
+                return reinterpret_cast<S*>(address);
+            }
+
+            Memory slice(size_t slice_offset, size_t slice_size = 0) const
+            {
+                Memory memory(address + slice_offset, size - slice_offset);
+                if (slice_size)
+                {
+                    memory.size = std::min(memory.size, slice_size);
+                }
+                return memory;
+            }
+        };
+
+    } // namespace detail
+
+    // -----------------------------------------------------------------------
+    // NonCopyable
+    // -----------------------------------------------------------------------
+
+    class NonCopyable
+    {
+    protected:
+        NonCopyable() = default;
+
+    private:
+        NonCopyable(const NonCopyable&) = delete;
+        NonCopyable& operator = (const NonCopyable&) = delete;
+    };
 
     // -----------------------------------------------------------------------
     // memory
@@ -237,5 +253,34 @@ namespace detail {
             return m_data + m_size;
         }
     };
+
+    // -----------------------------------------------------------------------
+    // align_pointer
+    // -----------------------------------------------------------------------
+
+    template <size_t alignment>
+    constexpr inline
+    uintptr_t align_pointer(uintptr_t pointer)
+    {
+        static_assert((alignment & (alignment - 1)) == 0, "alignment must be a power of two.");
+        constexpr size_t mask = alignment - 1;
+        return (pointer + mask) & ~mask;
+    }
+
+    template <size_t alignment>
+    constexpr inline
+    const u8* align_pointer(const u8* pointer)
+    {
+        uintptr_t p = align_pointer<alignment>(reinterpret_cast<uintptr_t>(pointer));
+        return reinterpret_cast<const u8*>(p);
+    }
+
+    template <size_t alignment>
+    constexpr inline
+    u8* align_pointer(u8* pointer)
+    {
+        uintptr_t p = align_pointer<alignment>(reinterpret_cast<uintptr_t>(pointer));
+        return reinterpret_cast<u8*>(p);
+    }
 
 } // namespace mango

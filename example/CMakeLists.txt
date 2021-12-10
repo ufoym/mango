@@ -9,17 +9,19 @@ project(mango-examples)
 
 # build options
 option(BUILD_OPENGL      "Enables build of OpenGL examples"      OFF)
-option(BUILD_FRAMEBUFFER "Enables build of framebuffer examples" OFF)
 
 add_compile_options(-Wall -O3 -g)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
     add_compile_options(-mavx)
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "(arm)")
-    add_definitions(-mfpu=neon -mfloat-abi=hard)
+    if (!APPLE)
+        # The compiler for Apple Mx CPUs don't recognize these
+        add_definitions (-mfpu=neon -mfloat-abi=hard)
+    endif()
     set(CMAKE_CXX_FLAGS "-fpermissive -Wno-psabi")
 endif ()
 
@@ -39,28 +41,29 @@ if (APPLE)
     # fix wrapped compiler dropping /usr/local
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/usr/local/include")
     link_directories(/usr/local/lib)
+
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "(arm)")
+        # fix brew paths on M1 silicon
+        include_directories("/opt/homebrew/include")
+        include_directories("/opt/homebrew/opt/jpeg-turbo/include ")
+        link_directories("/opt/homebrew/lib")
+        link_directories("/opt/homebrew/opt/jpeg-turbo/lib")
+    endif ()
 else ()
     link_libraries(dl)
 endif ()
 
 # ----------------------------------------------------------------------
-# build
+# build examples + utilities
 # ----------------------------------------------------------------------
 
 add_subdirectory(test)
 add_subdirectory(misc)
 add_subdirectory(image)
+add_subdirectory(utils)
 
 # ----------------------------------------------------------------------
-# build framebuffer
-# ----------------------------------------------------------------------
-
-if (BUILD_FRAMEBUFFER)
-    add_subdirectory(framebuffer)
-endif ()
-
-# ----------------------------------------------------------------------
-# build opengl
+# build OpenGL examples
 # ----------------------------------------------------------------------
 
 if (BUILD_OPENGL)

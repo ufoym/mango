@@ -33,66 +33,66 @@ namespace
             , m_file(INVALID_HANDLE_VALUE)
             , m_map(nullptr)
         {
-			m_file = CreateFileW(u16_fromBytes(filename).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            m_file = CreateFileW(u16_fromBytes(filename).c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-			// special handling when too long filename
-			if (m_file == INVALID_HANDLE_VALUE)
-			{
-				// TODO: use UNC filename or ShortPath
-				if (filename.length() > MAX_PATH)
-				{
-					m_memory.address = nullptr;
-					m_memory.size = 0;
-					return;
-				}
-			}
+            // special handling when too long filename
+            if (m_file == INVALID_HANDLE_VALUE)
+            {
+                // TODO: use UNC filename or ShortPath
+                if (filename.length() > MAX_PATH)
+                {
+                    m_memory.address = nullptr;
+                    m_memory.size = 0;
+                    return;
+                }
+            }
 
             if (m_file != INVALID_HANDLE_VALUE)
             {
                 LARGE_INTEGER file_size;
                 GetFileSizeEx(m_file, &file_size);
 
-				if (file_size.QuadPart > 0)
-				{
-					DWORD maxSizeHigh = 0;
-					DWORD maxSizeLow = 0;
-					m_map = CreateFileMappingW(m_file, NULL, PAGE_READONLY, maxSizeHigh, maxSizeLow, NULL);
+                if (file_size.QuadPart > 0)
+                {
+                    DWORD maxSizeHigh = 0;
+                    DWORD maxSizeLow = 0;
+                    m_map = CreateFileMappingW(m_file, NULL, PAGE_READONLY, maxSizeHigh, maxSizeLow, NULL);
 
-					if (m_map)
-					{
-						DWORD offsetHigh = 0;
-						DWORD offsetLow = 0;
-						SIZE_T bytes = 0;
+                    if (m_map)
+                    {
+                        DWORD offsetHigh = 0;
+                        DWORD offsetLow = 0;
+                        SIZE_T bytes = 0;
 
-						u64 page_offset = 0;
-						if (x_offset > 0)
-						{
-							SYSTEM_INFO info;
-							::GetSystemInfo(&info);
-							const DWORD page_size = info.dwAllocationGranularity;
-							const DWORD page_number = static_cast<DWORD>(x_offset / page_size);
-							page_offset = page_number * page_size;
-							offsetHigh = DWORD(page_offset >> 32);
-							offsetLow = DWORD(page_offset & 0xffffffff);
-						}
+                        u64 page_offset = 0;
+                        if (x_offset > 0)
+                        {
+                            SYSTEM_INFO info;
+                            ::GetSystemInfo(&info);
+                            const DWORD page_size = info.dwAllocationGranularity;
+                            const DWORD page_number = static_cast<DWORD>(x_offset / page_size);
+                            page_offset = page_number * page_size;
+                            offsetHigh = DWORD(page_offset >> 32);
+                            offsetLow = DWORD(page_offset & 0xffffffff);
+                        }
 
-						m_memory.size = size_t(file_size.QuadPart);
-						if (x_size > 0)
-						{
-							m_memory.size = std::min(m_memory.size, static_cast<size_t>(x_size));
-							bytes = static_cast<SIZE_T>(m_memory.size);
-						}
+                        m_memory.size = size_t(file_size.QuadPart);
+                        if (x_size > 0)
+                        {
+                            m_memory.size = std::min(m_memory.size, static_cast<size_t>(x_size));
+                            bytes = static_cast<SIZE_T>(m_memory.size);
+                        }
 
-						LPVOID address_ = MapViewOfFile(m_map, FILE_MAP_READ, offsetHigh, offsetLow, bytes);
+                        LPVOID address_ = MapViewOfFile(m_map, FILE_MAP_READ, offsetHigh, offsetLow, bytes);
 
-						m_address = address_;
-						m_memory.address = reinterpret_cast<u8*>(address_) + (x_offset - page_offset);
-					}
-					else
-					{
-						MANGO_EXCEPTION("[FileMemory] Memory \"%s\" mapping failed.", filename.c_str());
-					}
-				}
+                        m_address = address_;
+                        m_memory.address = reinterpret_cast<u8*>(address_) + (x_offset - page_offset);
+                    }
+                    else
+                    {
+                        MANGO_EXCEPTION("[FileMemory] Memory \"%s\" mapping failed.", filename.c_str());
+                    }
+                }
             }
             else
             {
@@ -154,7 +154,14 @@ namespace
 
         void getIndex(FileIndex& index, const std::string& pathname) override
         {
-            std::wstring filespec = u16_fromBytes(m_basepath + pathname + "*");
+            std::string fullname = m_basepath + pathname;
+            if (fullname.empty())
+            {
+                // does _wfindfirst64() supports empty fullname?
+                fullname = "./";
+            }
+
+            std::wstring filespec = u16_fromBytes(fullname + "*");
 
             _wfinddata64_t cfile;
 
@@ -201,8 +208,8 @@ namespace
 
 } // namespace
 
-namespace mango {
-namespace filesystem {
+namespace mango::filesystem
+{
 
     // -----------------------------------------------------------------
     // Mapper::createFileMapper()
@@ -215,5 +222,4 @@ namespace filesystem {
         return mapper;
     }
 
-} // namespace filesystem
-} // namespace mango
+} // namespace mango::filesystem

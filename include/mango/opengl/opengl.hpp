@@ -1,8 +1,10 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #pragma once
+
+#if !defined(__ppc__)
 
 #include <set>
 #include <string>
@@ -108,7 +110,8 @@
 #include <mango/image/compression.hpp>
 #include <mango/window/window.hpp>
 
-namespace mango {
+namespace mango
+{
 
     // -------------------------------------------------------------------
     // OpenGLContext
@@ -138,7 +141,7 @@ namespace mango {
         struct InternalFormat
         {
             GLenum iformat;
-            Format format;
+            image::Format format;
             bool srgb;
             const char* name;
         };
@@ -149,7 +152,7 @@ namespace mango {
         bool isExtension(const std::string& name) const;
         bool isGLES() const;
         int getVersion() const;
-        bool isCompressedTextureSupported(TextureCompression compression) const;
+        bool isCompressedTextureSupported(image::TextureCompression compression) const;
         const InternalFormat* getInternalFormat(GLenum internalFormat) const;
 
         void makeCurrent();
@@ -157,7 +160,7 @@ namespace mango {
         void swapInterval(int interval);
         void toggleFullscreen();
         bool isFullscreen() const;
-        int32x2 getWindowSize() const override;
+        math::int32x2 getWindowSize() const override;
 
         // extension masks
 
@@ -214,7 +217,7 @@ namespace mango {
     protected:
         int m_width;
         int m_height;
-        Format m_format;
+        image::Format m_format;
         size_t m_stride;
 
         bool m_is_rgba;
@@ -262,7 +265,7 @@ namespace mango {
         OpenGLFramebuffer(int width, int height, BufferMode buffermode = RGBA_DIRECT);
         ~OpenGLFramebuffer();
 
-        Surface lock();
+        image::Surface lock();
         void unlock();
         void setPalette(const u32* palette);
         void present(Filter filter = FILTER_NEAREST);
@@ -271,3 +274,5 @@ namespace mango {
 #endif // MANGO_OPENGL_FRAMEBUFFER
 
 } // namespace mango
+
+#endif

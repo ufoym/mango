@@ -42,7 +42,6 @@
     <ClInclude Include="..\..\include\mango\core\half.hpp" />
     <ClInclude Include="..\..\include\mango\core\hash.hpp" />
     <ClInclude Include="..\..\include\mango\core\memory.hpp" />
-    <ClInclude Include="..\..\include\mango\core\object.hpp" />
     <ClInclude Include="..\..\include\mango\core\pointer.hpp" />
     <ClInclude Include="..\..\include\mango\core\stream.hpp" />
     <ClInclude Include="..\..\include\mango\core\string.hpp" />
@@ -54,7 +53,6 @@
     <ClInclude Include="..\..\include\mango\filesystem\filesystem.hpp" />
     <ClInclude Include="..\..\include\mango\filesystem\mapper.hpp" />
     <ClInclude Include="..\..\include\mango\filesystem\path.hpp" />
-    <ClInclude Include="..\..\include\mango\framebuffer\framebuffer.hpp" />
     <ClInclude Include="..\..\include\mango\image\blitter.hpp" />
     <ClInclude Include="..\..\include\mango\image\color.hpp" />
     <ClInclude Include="..\..\include\mango\image\compression.hpp" />
@@ -70,7 +68,7 @@
     <ClInclude Include="..\..\include\mango\math\geometry.hpp" />
     <ClInclude Include="..\..\include\mango\math\math.hpp" />
     <ClInclude Include="..\..\include\mango\math\matrix.hpp" />
-    <ClInclude Include="..\..\include\mango\math\matrix_float4x4.hpp" />
+    <ClInclude Include="..\..\include\mango\math\matrix4x4.hpp" />
     <ClInclude Include="..\..\include\mango\math\quaternion.hpp" />
     <ClInclude Include="..\..\include\mango\math\srgb.hpp" />
     <ClInclude Include="..\..\include\mango\math\vector.hpp" />
@@ -180,10 +178,6 @@
     <ClInclude Include="..\..\include\mango\simd\sse2_double128.hpp" />
     <ClInclude Include="..\..\include\mango\simd\sse2_float128.hpp" />
     <ClInclude Include="..\..\include\mango\simd\sse2_int128.hpp" />
-    <ClInclude Include="..\..\include\mango\vulkan\func\vk_func.hpp" />
-    <ClInclude Include="..\..\include\mango\vulkan\khronos\vk_platform.h" />
-    <ClInclude Include="..\..\include\mango\vulkan\khronos\vulkan.h" />
-    <ClInclude Include="..\..\include\mango\vulkan\vulkan.hpp" />
     <ClInclude Include="..\..\include\mango\window\window.hpp" />
     <ClInclude Include="..\..\source\external\aes\bc_aes.h" />
     <ClInclude Include="..\..\source\external\bc\BC.h" />
@@ -271,13 +265,9 @@
     <ClInclude Include="..\..\source\external\lzfse\lzvn_decode_base.h" />
     <ClInclude Include="..\..\source\external\lzfse\lzvn_encode_base.h" />
     <ClInclude Include="..\..\source\external\lzma\7z.h" />
-    <ClInclude Include="..\..\source\external\lzma\7zAes.h" />
     <ClInclude Include="..\..\source\external\lzma\7zAlloc.h" />
     <ClInclude Include="..\..\source\external\lzma\7zBuf.h" />
     <ClInclude Include="..\..\source\external\lzma\7zCrc.h" />
-    <ClInclude Include="..\..\source\external\lzma\7zFile.h" />
-    <ClInclude Include="..\..\source\external\lzma\7zSha1.h" />
-    <ClInclude Include="..\..\source\external\lzma\7zSha256.h" />
     <ClInclude Include="..\..\source\external\lzma\7zTypes.h" />
     <ClInclude Include="..\..\source\external\lzma\7zVersion.h" />
     <ClInclude Include="..\..\source\external\lzma\Alloc.h" />
@@ -288,13 +278,10 @@
     <ClInclude Include="..\..\source\external\lzma\Compiler.h" />
     <ClInclude Include="..\..\source\external\lzma\CpuArch.h" />
     <ClInclude Include="..\..\source\external\lzma\Delta.h" />
-    <ClInclude Include="..\..\source\external\lzma\DllSecur.h" />
-    <ClInclude Include="..\..\source\external\lzma\HuffEnc.h" />
     <ClInclude Include="..\..\source\external\lzma\LzFind.h" />
     <ClInclude Include="..\..\source\external\lzma\LzHash.h" />
     <ClInclude Include="..\..\source\external\lzma\Lzma2Dec.h" />
     <ClInclude Include="..\..\source\external\lzma\Lzma2Enc.h" />
-    <ClInclude Include="..\..\source\external\lzma\Lzma86.h" />
     <ClInclude Include="..\..\source\external\lzma\LzmaDec.h" />
     <ClInclude Include="..\..\source\external\lzma\LzmaEnc.h" />
     <ClInclude Include="..\..\source\external\lzma\LzmaLib.h" />
@@ -304,9 +291,6 @@
     <ClInclude Include="..\..\source\external\lzma\Precomp.h" />
     <ClInclude Include="..\..\source\external\lzma\RotateDefs.h" />
     <ClInclude Include="..\..\source\external\lzma\Sort.h" />
-    <ClInclude Include="..\..\source\external\lzma\Xz.h" />
-    <ClInclude Include="..\..\source\external\lzma\XzCrc64.h" />
-    <ClInclude Include="..\..\source\external\lzma\XzEnc.h" />
     <ClInclude Include="..\..\source\external\lzo\lzoconf.h" />
     <ClInclude Include="..\..\source\external\lzo\lzodefs.h" />
     <ClInclude Include="..\..\source\external\lzo\minilzo.h" />
@@ -322,6 +306,7 @@
     <ClInclude Include="..\..\source\external\unrar\rijndael.hpp" />
     <ClInclude Include="..\..\source\external\unrar\suballoc.hpp" />
     <ClInclude Include="..\..\source\external\unrar\unpack.hpp" />
+    <ClInclude Include="..\..\source\external\xxhash\xxhash.h" />
     <ClInclude Include="..\..\source\external\zpng\zpng.h" />
     <ClInclude Include="..\..\source\external\zstd\common\bitstream.h" />
     <ClInclude Include="..\..\source\external\zstd\common\compiler.h" />
@@ -335,8 +320,8 @@
     <ClInclude Include="..\..\source\external\zstd\common\threading.h" />
     <ClInclude Include="..\..\source\external\zstd\common\xxhash.h" />
     <ClInclude Include="..\..\source\external\zstd\common\zstd_deps.h" />
-    <ClInclude Include="..\..\source\external\zstd\common\zstd_errors.h" />
     <ClInclude Include="..\..\source\external\zstd\common\zstd_internal.h" />
+    <ClInclude Include="..\..\source\external\zstd\common\zstd_trace.h" />
     <ClInclude Include="..\..\source\external\zstd\compress\hist.h" />
     <ClInclude Include="..\..\source\external\zstd\compress\zstdmt_compress.h" />
     <ClInclude Include="..\..\source\external\zstd\compress\zstd_compress_internal.h" />
@@ -348,11 +333,13 @@
     <ClInclude Include="..\..\source\external\zstd\compress\zstd_fast.h" />
     <ClInclude Include="..\..\source\external\zstd\compress\zstd_lazy.h" />
     <ClInclude Include="..\..\source\external\zstd\compress\zstd_ldm.h" />
+    <ClInclude Include="..\..\source\external\zstd\compress\zstd_ldm_geartab.h" />
     <ClInclude Include="..\..\source\external\zstd\compress\zstd_opt.h" />
     <ClInclude Include="..\..\source\external\zstd\decompress\zstd_ddict.h" />
     <ClInclude Include="..\..\source\external\zstd\decompress\zstd_decompress_block.h" />
     <ClInclude Include="..\..\source\external\zstd\decompress\zstd_decompress_internal.h" />
     <ClInclude Include="..\..\source\external\zstd\zstd.h" />
+    <ClInclude Include="..\..\source\external\zstd\zstd_errors.h" />
     <ClInclude Include="..\..\source\mango\filesystem\indexer.hpp" />
     <ClInclude Include="..\..\source\mango\jpeg\jpeg.hpp" />
     <ClInclude Include="..\..\source\mango\jpeg\jpeg_process_func.hpp" />
@@ -441,6 +428,7 @@
     <ClCompile Include="..\..\source\external\libwebp\src\dsp\lossless_msa.c" />
     <ClCompile Include="..\..\source\external\libwebp\src\dsp\lossless_neon.c" />
     <ClCompile Include="..\..\source\external\libwebp\src\dsp\lossless_sse2.c" />
+    <ClCompile Include="..\..\source\external\libwebp\src\dsp\lossless_sse41.c" />
     <ClCompile Include="..\..\source\external\libwebp\src\dsp\rescaler.c" />
     <ClCompile Include="..\..\source\external\libwebp\src\dsp\rescaler_mips32.c" />
     <ClCompile Include="..\..\source\external\libwebp\src\dsp\rescaler_mips_dsp_r2.c" />
@@ -509,7 +497,6 @@
     <ClCompile Include="..\..\source\external\lzfse\lzfse_fse.c" />
     <ClCompile Include="..\..\source\external\lzfse\lzvn_decode_base.c" />
     <ClCompile Include="..\..\source\external\lzfse\lzvn_encode_base.c" />
-    <ClCompile Include="..\..\source\external\lzma\7zAes.c" />
     <ClCompile Include="..\..\source\external\lzma\7zAlloc.c" />
     <ClCompile Include="..\..\source\external\lzma\7zArcIn.c" />
     <ClCompile Include="..\..\source\external\lzma\7zBuf.c" />
@@ -517,11 +504,7 @@
     <ClCompile Include="..\..\source\external\lzma\7zCrc.c" />
     <ClCompile Include="..\..\source\external\lzma\7zCrcOpt.c" />
     <ClCompile Include="..\..\source\external\lzma\7zDec.c" />
-    <ClCompile Include="..\..\source\external\lzma\7zFile.c" />
-    <ClCompile Include="..\..\source\external\lzma\7zSha1.c" />
-    <ClCompile Include="..\..\source\external\lzma\7zSha256.c" />
     <ClCompile Include="..\..\source\external\lzma\7zStream.c" />
-    <ClCompile Include="..\..\source\external\lzma\AesOpt.c" />
     <ClCompile Include="..\..\source\external\lzma\Alloc.c" />
     <ClCompile Include="..\..\source\external\lzma\Bcj2.c" />
     <ClCompile Include="..\..\source\external\lzma\Bcj2Enc.c" />
@@ -532,13 +515,9 @@
     <ClCompile Include="..\..\source\external\lzma\BwtSort.c" />
     <ClCompile Include="..\..\source\external\lzma\CpuArch.c" />
     <ClCompile Include="..\..\source\external\lzma\Delta.c" />
-    <ClCompile Include="..\..\source\external\lzma\DllSecur.c" />
-    <ClCompile Include="..\..\source\external\lzma\HuffEnc.c" />
     <ClCompile Include="..\..\source\external\lzma\LzFind.c" />
     <ClCompile Include="..\..\source\external\lzma\Lzma2Dec.c" />
     <ClCompile Include="..\..\source\external\lzma\Lzma2Enc.c" />
-    <ClCompile Include="..\..\source\external\lzma\Lzma86Dec.c" />
-    <ClCompile Include="..\..\source\external\lzma\Lzma86Enc.c" />
     <ClCompile Include="..\..\source\external\lzma\LzmaDec.c" />
     <ClCompile Include="..\..\source\external\lzma\LzmaEnc.c" />
     <ClCompile Include="..\..\source\external\lzma\LzmaLib.c" />
@@ -549,12 +528,6 @@
     <ClCompile Include="..\..\source\external\lzma\Ppmd8Dec.c" />
     <ClCompile Include="..\..\source\external\lzma\Ppmd8Enc.c" />
     <ClCompile Include="..\..\source\external\lzma\Sort.c" />
-    <ClCompile Include="..\..\source\external\lzma\Xz.c" />
-    <ClCompile Include="..\..\source\external\lzma\XzCrc64.c" />
-    <ClCompile Include="..\..\source\external\lzma\XzCrc64Opt.c" />
-    <ClCompile Include="..\..\source\external\lzma\XzDec.c" />
-    <ClCompile Include="..\..\source\external\lzma\XzEnc.c" />
-    <ClCompile Include="..\..\source\external\lzma\XzIn.c" />
     <ClCompile Include="..\..\source\external\lzo\minilzo.c" />
     <ClCompile Include="..\..\source\external\unrar\crc.cpp" />
     <ClCompile Include="..\..\source\external\unrar\crypt.cpp" />
@@ -613,7 +586,6 @@
     <ClCompile Include="..\..\source\mango\filesystem\win32\file_observer.cpp" />
     <ClCompile Include="..\..\source\mango\filesystem\win32\file_stream.cpp" />
     <ClCompile Include="..\..\source\mango\filesystem\win32\mapper_file.cpp" />
-    <ClCompile Include="..\..\source\mango\framebuffer\win32\d3d9_framebuffer.cpp" />
     <ClCompile Include="..\..\source\mango\image\blitter.cpp" />
     <ClCompile Include="..\..\source\mango\image\block.cpp" />
     <ClCompile Include="..\..\source\mango\image\block_dxt.cpp" />
@@ -655,7 +627,6 @@
     <ClCompile Include="..\..\source\mango\math\simd.cpp" />
     <ClCompile Include="..\..\source\mango\opengl\opengl.cpp" />
     <ClCompile Include="..\..\source\mango\opengl\wgl\wgl_context.cpp" />
-    <ClCompile Include="..\..\source\mango\vulkan\vulkan.cpp" />
     <ClCompile Include="..\..\source\mango\window\win32\win32_window.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
@@ -759,6 +730,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <MinimalRebuild>false</MinimalRebuild>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -776,6 +748,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <MinimalRebuild>false</MinimalRebuild>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -795,6 +768,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <MinimalRebuild>false</MinimalRebuild>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -818,6 +792,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <MinimalRebuild>false</MinimalRebuild>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -841,6 +816,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
       <MinimalRebuild>false</MinimalRebuild>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -864,6 +840,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
       <MinimalRebuild>false</MinimalRebuild>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

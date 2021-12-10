@@ -8,8 +8,10 @@
 */
 #include <mango/math/vector.hpp>
 
-namespace mango {
-namespace fp32 {
+namespace fp32
+{
+    using namespace mango;
+    using namespace mango::math;
 
     // constants
 
@@ -349,7 +351,10 @@ namespace fp32 {
 
 #if 0
 
-namespace fp64 {
+namespace fp64
+{
+    using namespace mango;
+    using namespace mango::math;
 
     // constants
 
@@ -440,6 +445,9 @@ namespace fp64 {
 } // namespace fp64
 
 #endif
+
+namespace mango::math
+{
 
     // ------------------------------------------------------------------------
     // float32x4
@@ -679,4 +687,4 @@ namespace fp64 {
 
 #endif
 
-} // namespace mango
+} // namespace mango::math

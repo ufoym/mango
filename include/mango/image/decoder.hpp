@@ -1,17 +1,17 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #pragma once
 
 #include <string>
-#include <mango/core/object.hpp>
+#include <mango/core/memory.hpp>
 #include <mango/core/exception.hpp>
 #include <mango/image/format.hpp>
 #include <mango/image/compression.hpp>
 #include <mango/image/exif.hpp>
 
-namespace mango
+namespace mango::image
 {
     class Surface;
 
@@ -50,6 +50,9 @@ namespace mango
         // - palette is resolved into the provided palette object
         // - decode() destination surface must be indexed
         Palette* palette = nullptr; // enable indexed decoding by pointing to a palette
+
+        bool simd = true;
+        bool multithread = true;
     };
 
     class ImageDecoderInterface : protected NonCopyable
@@ -59,7 +62,7 @@ namespace mango
         virtual ~ImageDecoderInterface() = default;
 
         virtual ImageHeader header() = 0;
-        virtual ImageDecodeStatus decode(const Surface& dest, Palette* palette, int level, int depth, int face) = 0;
+        virtual ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) = 0;
 
         // optional
         virtual ConstMemory memory(int level, int depth, int face); // get compressed data
@@ -90,4 +93,4 @@ namespace mango
     void registerImageDecoder(ImageDecoder::CreateDecoderFunc func, const std::string& extension);
     bool isImageDecoder(const std::string& extension);
 
-} // namespace mango
+} // namespace mango::image

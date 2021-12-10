@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/crc32.hpp>
 #include <mango/core/exception.hpp>
@@ -36,9 +36,31 @@ namespace
     // tables and constants
     // ----------------------------------------------------------------------------------------
 
-    // NOTE: these are in little-endian
-    constexpr u32 crc32_polynomial = 0xedb88320;
-    constexpr u32 crc32c_polynomial = 0x82f63b78;
+    /*
+
+    constexpr u32 crc32_polynomial_little_endian = 0xedb88320;
+    constexpr u32 crc32c_polynomial_little_endian = 0x82f63b78;
+
+    constexpr u32 crc32_polynomial_big_endian = 0x04c11db7;
+    constexpr u32 crc32c_polynomial_big_endian = 0x1edc6f41;
+
+    */
+
+    constexpr u32 crc32_combine_table [] =
+    {
+        0x1db71064,
+        0x3b6e20c8,
+        0x76dc4190,
+        0xedb88320, // <-- little-endian crc32 polynomial
+    };
+
+    constexpr u32 crc32c_combine_table [] =
+    {
+        0x105ec76f,
+        0x20bd8ede,
+        0x417b1dbc,
+        0x82f63b78, // <-- little-endian crc32c polynomial
+    };
 
 #if !defined(HARDWARE_U8_CRC32) || !defined(HARDWARE_U64_CRC32)
 
@@ -595,13 +617,10 @@ namespace
 
 #if !defined(HARDWARE_U64_CRC32) || !defined(HARDWARE_U64_CRC32C)
 
-#ifdef MANGO_CPU_64BIT
-
-	inline
-	u32 u64_crc(u32 crc, const u8* ptr, const u32* table)
+    inline
+    u32 u64_crc(u32 crc, u64 data, const u32* table)
     {
-        u64 data = uload64le(ptr);
-        data = data ^ u64(crc);
+        data ^= u64(crc);
         crc = table[((data >> 56) & 0xff) + 0x000] ^
               table[((data >> 48) & 0xff) + 0x100] ^
               table[((data >> 40) & 0xff) + 0x200] ^
@@ -613,31 +632,6 @@ namespace
         return crc;
     }
 
-#else
-
-	inline
-    u32 u64_crc(u32 crc, const u8* ptr, const u32* table)
-    {
-    #ifdef MANGO_LITTLE_ENDIAN
-        u32 one = uload32le(ptr + 0) ^ crc;
-        u32 two = uload32le(ptr + 4);
-    #else
-        u32 one = uload32le(ptr + 4) ^ crc;
-        u32 two = uload32le(ptr + 0);
-    #endif
-        crc = table[((two >> 24) & 0xff) + 0x000] ^
-              table[((two >> 16) & 0xff) + 0x100] ^
-              table[((two >>  8) & 0xff) + 0x200] ^
-              table[((two >>  0) & 0xff) + 0x300] ^
-              table[((one >> 24) & 0xff) + 0x400] ^
-              table[((one >> 16) & 0xff) + 0x500] ^
-              table[((one >>  8) & 0xff) + 0x600] ^
-              table[((one >>  0) & 0xff) + 0x700];
-        return crc;
-    }
-
-#endif // MANGO_CPU_64BIT
-
 #endif // !defined(HARDWARE_U64_CRC32) || !defined(HARDWARE_U64_CRC32C)
 
     // ----------------------------------------------------------------------------------------
@@ -648,17 +642,18 @@ namespace
 
     inline u32 u8_crc32(u32 crc, u8 data)
     {
-		crc = (crc >> 8) ^ g_crc32_table[(crc & 0xff) ^ data];
-		return crc;
+        // TODO: big-endian
+        crc = (crc >> 8) ^ g_crc32_table[(crc & 0xff) ^ data];
+        return crc;
     }
 
 #endif
 
 #if !defined(HARDWARE_U64_CRC32)
 
-    inline u32 u64_crc32(u32 crc, const u8* data)
+    inline u32 u64_crc32(u32 crc, u64 data)
     {
-		return u64_crc(crc, data, g_crc32_table);
+        return u64_crc(crc, data, g_crc32_table);
     }
 
 #endif
@@ -667,15 +662,15 @@ namespace
 
     inline u32 u8_crc32c(u32 crc, u8 data)
     {
-		crc = (crc >> 8) ^ g_crc32c_table[(crc & 0xff) ^ data];
-		return crc;
-	}
+        crc = (crc >> 8) ^ g_crc32c_table[(crc & 0xff) ^ data];
+        return crc;
+    }
 
 #endif
 
 #if !defined(HARDWARE_U64_CRC32C)
 
-    inline u32 u64_crc32c(u32 crc, const u8* data)
+    inline u32 u64_crc32c(u32 crc, u64 data)
     {
         return u64_crc(crc, data, g_crc32c_table);
     }
@@ -693,9 +688,9 @@ namespace
         return __crc32b(crc, data);
     }
 
-    inline u32 u64_crc32(u32 crc, const u8* data)
+    inline u32 u64_crc32(u32 crc, u64 data)
     {
-        return __crc32d(crc, uload64(data));
+        return __crc32d(crc, data);
     }
 
     inline u32 u8_crc32c(u32 crc, u8 data)
@@ -703,9 +698,9 @@ namespace
         return __crc32cb(crc, data);
     }
 
-    inline u32 u64_crc32c(u32 crc, const u8* data)
+    inline u32 u64_crc32c(u32 crc, u64 data)
     {
-        return __crc32cd(crc, uload64(data));
+        return __crc32cd(crc, data);
     }
 
 #endif // defined(__ARM_FEATURE_CRC32)
@@ -716,19 +711,17 @@ namespace
 
 #if defined(__PCLMUL__) && defined(MANGO_ENABLE_SSE4_2)
 
-    inline u32 u64_crc32(u32 crc, const u8* data)
+    inline u32 u64_crc32(u32 crc, u64 data)
     {
-        u64 value = uload64(data);
-
         // https://merrymage.com/lab/crc32/
         // Enabled with -mpclmul compiler switch (clang, gcc)
 
-        __m128i xmm_const = _mm_set_epi64x(0x00000001DB710641, 0xB4E5B025F7011641);
-        __m128i xmm_value = _mm_set_epi64x(0, value ^ crc);
+        __m128i magic = _mm_set_epi64x(0x00000001DB710641, 0xB4E5B025F7011641);
+        __m128i value = _mm_set_epi64x(0, data ^ crc);
 
-        xmm_value = _mm_clmulepi64_si128(xmm_value, xmm_const, 0x00);
-        xmm_value = _mm_clmulepi64_si128(xmm_value, xmm_const, 0x10);
-        return _mm_extract_epi32(xmm_value, 2); // requires SSE4.1
+        value = _mm_clmulepi64_si128(value, magic, 0x00);
+        value = _mm_clmulepi64_si128(value, magic, 0x10);
+        return _mm_extract_epi32(value, 2);
     }
 
 #endif // defined(__PCLMUL__) && defined(MANGO_ENABLE_SSE4_2)
@@ -746,73 +739,87 @@ namespace
 
 #ifdef MANGO_CPU_64BIT
 
-    // 64 bit crc32c (SSE4.2)
-
-    inline u32 u64_crc32c(u32 crc, const u8* data)
+    inline u32 u64_crc32c(u32 crc, u64 data)
     {
-        return u32(_mm_crc32_u64(crc, uload64(data)));
+        return u32(_mm_crc32_u64(crc, data));
     }
 
 #else
 
-    // 32 bit crc32c (SSE4.2)
-    // (_mm_crc32_u64 is not available in 32 bit x86)
-
-    inline u32 u64_crc32c(u32 crc, const u8* data)
+    inline u32 u64_crc32c(u32 crc, u64 data)
     {
-        crc = _mm_crc32_u32(crc, uload32(data + 0));
-        crc = _mm_crc32_u32(crc, uload32(data + 4));
+        // _mm_crc32_u64 is not available in 32 bit x86
+        crc = _mm_crc32_u32(crc, u32(data & 0xffffffff));
+        crc = _mm_crc32_u32(crc, u32(data >> 32));
         return crc;
-    }
+    }(
 
 #endif // MANGO_CPU_64BIT
 
 #endif // MANGO_ENABLE_SSE4_2
 
+    // ----------------------------------------------------------------------------------------
+    // crc_combine
+    // ----------------------------------------------------------------------------------------
+
     // Original implementation (C) Stephan Brumme
-    u32 crc_combine(u32 crc, size_t length, u32 polynomial)
+
+    static inline
+    u32 combine(u32 value, const u32* table)
+    {
+        u32 sum = 0;
+#if 1
+        // NOTE: Requires fast tzcnt instruction
+        //       The emulated tzcnt uses multiplication and high bit-density values will
+        //       result in dramatic performance decrease. :(
+        int index = 0;
+        while (value)
+        {
+            int count = u32_tzcnt(value) + 1;
+            index += count;
+            value >>= count;
+            sum ^= table[index - 1];
+        }
+#else
+        for (int i = 0; value != 0; i++, value >>= 1)
+        {
+            if (value & 1)
+            {
+                sum ^= table[i];
+            }
+        }
+#endif
+        return sum;
+    }
+
+    u32 crc_combine(u32 crc, size_t length, const u32* table)
     {
         if (!length)
+        {
             return crc;
+        }
 
         constexpr int BITS = 32;
 
-        u32 odd[BITS]; // odd-power-of-two zeros operator
-        u32 even[BITS]; // even-power-of-two zeros operator
+        u32 odd[BITS];
+        u32 even[BITS];
 
-        // put operator for one zero bit in odd
-        odd[0] = polynomial;
-        for (int i = 1; i < BITS; ++i)
+        odd[0] = table[0];
+        odd[1] = table[1];
+        odd[2] = table[2];
+        odd[3] = table[3];
+
+        for (int i = 0; i < 28; ++i)
         {
-            odd[i] = 1 << (i - 1);
+            odd[i + 4] = 1 << i;
         }
 
-        // put operator for two zero bits in even
-        for (int i = 0; i < BITS; ++i)
-        {
-            u32 v = odd[i];
-            even[i] = 0;
-            for (int j = 0; v != 0; ++j, v >>= 1)
-            {
-                if (v & 1)
-                {
-                    even[i] ^= odd[j];
-                }
-            }
-        }
+        even[0] = table[2];
+        even[1] = table[3];
 
-        // put operator for four zero bits in odd
-        for (int i = 0; i < BITS; i++)
+        for (int i = 0; i < 30; ++i)
         {
-            uint32_t vec = even[i];
-            odd[i] = 0;
-            for (int j = 0; vec != 0; j++, vec >>= 1)
-            {
-                if (vec & 1)
-                {
-                    odd[i] ^= even[j];
-                }
-            }
+            even[i + 2] = 1 << i;
         }
 
         u32* a = even;
@@ -823,27 +830,13 @@ namespace
         {
             for (int i = 0; i < BITS; ++i)
             {
-                u32 vec = b[i];
-                a[i] = 0;
-                for (int j = 0; vec != 0; ++j, vec >>= 1)
-                {
-                    if (vec & 1)
-                        a[i] ^= b[j];
-                }
+                a[i] = combine(b[i], b);
             }
 
             // apply zeros operator for this bit
             if (length & 1)
             {
-                u32 sum = 0;
-                for (int i = 0; crc != 0; i++, crc >>= 1)
-                {
-                    if (crc & 1)
-                    {
-                        sum ^= a[i];
-                    }
-                }
-                crc = sum;
+                crc = combine(crc, a);
             }
 
             std::swap(a, b);
@@ -851,6 +844,97 @@ namespace
 
         return crc;
     }
+
+    // ----------------------------------------------------------------------------------------
+    // skip_block
+    // ----------------------------------------------------------------------------------------
+
+#if defined(HARDWARE_U64_CRC32C)
+
+    constexpr int g_skip_blocks = 3;
+    constexpr int g_skip_block0_size = 5440; // must be multiple of 32
+    constexpr int g_skip_block1_size = 1360; // must be multiple of 8
+    constexpr int g_skip_block2_size = 336;  // must be multiple of 8
+
+    const u32 g_crc32c_block0_skip_table [] =
+    {
+        0x00000000, 0xff770459, 0xfb027e43, 0x04757a1a, 0xf3e88a77, 0x0c9f8e2e, 0x08eaf434, 0xf79df06d,
+        0xe23d621f, 0x1d4a6646, 0x193f1c5c, 0xe6481805, 0x11d5e868, 0xeea2ec31, 0xead7962b, 0x15a09272,
+        0x00000000, 0xc196b2cf, 0x86c1136f, 0x4757a1a0, 0x086e502f, 0xc9f8e2e0, 0x8eaf4340, 0x4f39f18f,
+        0x10dca05e, 0xd14a1291, 0x961db331, 0x578b01fe, 0x18b2f071, 0xd92442be, 0x9e73e31e, 0x5fe551d1,
+        0x00000000, 0x21b940bc, 0x43728178, 0x62cbc1c4, 0x86e502f0, 0xa75c424c, 0xc5978388, 0xe42ec334,
+        0x08267311, 0x299f33ad, 0x4b54f269, 0x6aedb2d5, 0x8ec371e1, 0xaf7a315d, 0xcdb1f099, 0xec08b025,
+        0x00000000, 0x104ce622, 0x2099cc44, 0x30d52a66, 0x41339888, 0x517f7eaa, 0x61aa54cc, 0x71e6b2ee,
+        0x82673110, 0x922bd732, 0xa2fefd54, 0xb2b21b76, 0xc354a998, 0xd3184fba, 0xe3cd65dc, 0xf38183fe,
+        0x00000000, 0x012214d1, 0x024429a2, 0x03663d73, 0x04885344, 0x05aa4795, 0x06cc7ae6, 0x07ee6e37,
+        0x0910a688, 0x0832b259, 0x0b548f2a, 0x0a769bfb, 0x0d98f5cc, 0x0cbae11d, 0x0fdcdc6e, 0x0efec8bf,
+        0x00000000, 0x12214d10, 0x24429a20, 0x3663d730, 0x48853440, 0x5aa47950, 0x6cc7ae60, 0x7ee6e370,
+        0x910a6880, 0x832b2590, 0xb548f2a0, 0xa769bfb0, 0xd98f5cc0, 0xcbae11d0, 0xfdcdc6e0, 0xefec8bf0,
+        0x00000000, 0x27f8a7f1, 0x4ff14fe2, 0x6809e813, 0x9fe29fc4, 0xb81a3835, 0xd013d026, 0xf7eb77d7,
+        0x3a294979, 0x1dd1ee88, 0x75d8069b, 0x5220a16a, 0xa5cbd6bd, 0x8233714c, 0xea3a995f, 0xcdc23eae,
+        0x00000000, 0x745292f2, 0xe8a525e4, 0x9cf7b716, 0xd4a63d39, 0xa0f4afcb, 0x3c0318dd, 0x48518a2f,
+        0xaca00c83, 0xd8f29e71, 0x44052967, 0x3057bb95, 0x780631ba, 0x0c54a348, 0x90a3145e, 0xe4f186ac,
+    };
+
+    const u32 g_crc32c_block1_skip_table [] =
+    {
+        0x00000000, 0x79113270, 0xf22264e0, 0x8b335690, 0xe1a8bf31, 0x98b98d41, 0x138adbd1, 0x6a9be9a1,
+        0xc6bd0893, 0xbfac3ae3, 0x349f6c73, 0x4d8e5e03, 0x2715b7a2, 0x5e0485d2, 0xd537d342, 0xac26e132,
+        0x00000000, 0x889667d7, 0x14c0b95f, 0x9c56de88, 0x298172be, 0xa1171569, 0x3d41cbe1, 0xb5d7ac36,
+        0x5302e57c, 0xdb9482ab, 0x47c25c23, 0xcf543bf4, 0x7a8397c2, 0xf215f015, 0x6e432e9d, 0xe6d5494a,
+        0x00000000, 0xa605caf8, 0x49e7e301, 0xefe229f9, 0x93cfc602, 0x35ca0cfa, 0xda282503, 0x7c2deffb,
+        0x2273faf5, 0x8476300d, 0x6b9419f4, 0xcd91d30c, 0xb1bc3cf7, 0x17b9f60f, 0xf85bdff6, 0x5e5e150e,
+        0x00000000, 0x44e7f5ea, 0x89cfebd4, 0xcd281e3e, 0x1673a159, 0x529454b3, 0x9fbc4a8d, 0xdb5bbf67,
+        0x2ce742b2, 0x6800b758, 0xa528a966, 0xe1cf5c8c, 0x3a94e3eb, 0x7e731601, 0xb35b083f, 0xf7bcfdd5,
+        0x00000000, 0x59ce8564, 0xb39d0ac8, 0xea538fac, 0x62d66361, 0x3b18e605, 0xd14b69a9, 0x8885eccd,
+        0xc5acc6c2, 0x9c6243a6, 0x7631cc0a, 0x2fff496e, 0xa77aa5a3, 0xfeb420c7, 0x14e7af6b, 0x4d292a0f,
+        0x00000000, 0x8eb5fb75, 0x1887801b, 0x96327b6e, 0x310f0036, 0xbfbafb43, 0x2988802d, 0xa73d7b58,
+        0x621e006c, 0xecabfb19, 0x7a998077, 0xf42c7b02, 0x5311005a, 0xdda4fb2f, 0x4b968041, 0xc5237b34,
+        0x00000000, 0xc43c00d8, 0x8d947741, 0x49a87799, 0x1ec49873, 0xdaf898ab, 0x9350ef32, 0x576cefea,
+        0x3d8930e6, 0xf9b5303e, 0xb01d47a7, 0x7421477f, 0x234da895, 0xe771a84d, 0xaed9dfd4, 0x6ae5df0c,
+        0x00000000, 0x7b1261cc, 0xf624c398, 0x8d36a254, 0xe9a5f1c1, 0x92b7900d, 0x1f813259, 0x64935395,
+        0xd6a79573, 0xadb5f4bf, 0x208356eb, 0x5b913727, 0x3f0264b2, 0x4410057e, 0xc926a72a, 0xb234c6e6,
+    };
+
+    const u32 g_crc32c_block2_skip_table [] =
+    {
+        0x00000000, 0x8f158014, 0x1bc776d9, 0x94d2f6cd, 0x378eedb2, 0xb89b6da6, 0x2c499b6b, 0xa35c1b7f,
+        0x6f1ddb64, 0xe0085b70, 0x74daadbd, 0xfbcf2da9, 0x589336d6, 0xd786b6c2, 0x4354400f, 0xcc41c01b,
+        0x00000000, 0xde3bb6c8, 0xb99b1b61, 0x67a0ada9, 0x76da4033, 0xa8e1f6fb, 0xcf415b52, 0x117aed9a,
+        0xedb48066, 0x338f36ae, 0x542f9b07, 0x8a142dcf, 0x9b6ec055, 0x4555769d, 0x22f5db34, 0xfcce6dfc,
+        0x00000000, 0xde85763d, 0xb8e69a8b, 0x6663ecb6, 0x742143e7, 0xaaa435da, 0xccc7d96c, 0x1242af51,
+        0xe84287ce, 0x36c7f1f3, 0x50a41d45, 0x8e216b78, 0x9c63c429, 0x42e6b214, 0x24855ea2, 0xfa00289f,
+        0x00000000, 0xd569796d, 0xaf3e842b, 0x7a57fd46, 0x5b917ea7, 0x8ef807ca, 0xf4affa8c, 0x21c683e1,
+        0xb722fd4e, 0x624b8423, 0x181c7965, 0xcd750008, 0xecb383e9, 0x39dafa84, 0x438d07c2, 0x96e47eaf,
+        0x00000000, 0x6ba98c6d, 0xd75318da, 0xbcfa94b7, 0xab4a4745, 0xc0e3cb28, 0x7c195f9f, 0x17b0d3f2,
+        0x5378f87b, 0x38d17416, 0x842be0a1, 0xef826ccc, 0xf832bf3e, 0x939b3353, 0x2f61a7e4, 0x44c82b89,
+        0x00000000, 0xa6f1f0f6, 0x480f971d, 0xeefe67eb, 0x901f2e3a, 0x36eedecc, 0xd810b927, 0x7ee149d1,
+        0x25d22a85, 0x8323da73, 0x6dddbd98, 0xcb2c4d6e, 0xb5cd04bf, 0x133cf449, 0xfdc293a2, 0x5b336354,
+        0x00000000, 0x4ba4550a, 0x9748aa14, 0xdcecff1e, 0x2b7d22d9, 0x60d977d3, 0xbc3588cd, 0xf791ddc7,
+        0x56fa45b2, 0x1d5e10b8, 0xc1b2efa6, 0x8a16baac, 0x7d87676b, 0x36233261, 0xeacfcd7f, 0xa16b9875,
+        0x00000000, 0xadf48b64, 0x5e056039, 0xf3f1eb5d, 0xbc0ac072, 0x11fe4b16, 0xe20fa04b, 0x4ffb2b2f,
+        0x7df9f615, 0xd00d7d71, 0x23fc962c, 0x8e081d48, 0xc1f33667, 0x6c07bd03, 0x9ff6565e, 0x3202dd3a,
+    };
+
+    static inline
+    u32 skip_block(u32 crc, const u32* table)
+    {
+        crc = table[((crc >>  0) & 0xf) + 0x00] ^
+              table[((crc >>  4) & 0xf) + 0x10] ^
+              table[((crc >>  8) & 0xf) + 0x20] ^
+              table[((crc >> 12) & 0xf) + 0x30] ^
+              table[((crc >> 16) & 0xf) + 0x40] ^
+              table[((crc >> 20) & 0xf) + 0x50] ^
+              table[((crc >> 24) & 0xf) + 0x60] ^
+              table[((crc >> 28) & 0xf) + 0x70];
+        return crc;
+    }
+
+#endif
+
+    // ----------------------------------------------------------------------------------------
+    // crc32
+    // ----------------------------------------------------------------------------------------
 
     u32 crc32(u32 crc, const u8* address, size_t size)
     {
@@ -865,25 +949,113 @@ namespace
                 crc = u8_crc32(crc, *address++);
             }
 
-#ifdef HARDWARE_U64_CRC32
+#if defined(HARDWARE_U64_CRC32)
+
             while (size >= 64)
             {
-                crc = u64_crc32(crc, address + 8 * 0);
-                crc = u64_crc32(crc, address + 8 * 1);
-                crc = u64_crc32(crc, address + 8 * 2);
-                crc = u64_crc32(crc, address + 8 * 3);
-                crc = u64_crc32(crc, address + 8 * 4);
-                crc = u64_crc32(crc, address + 8 * 5);
-                crc = u64_crc32(crc, address + 8 * 6);
-                crc = u64_crc32(crc, address + 8 * 7);
+                u64 data0 = uload64le(address + 8 * 0);
+                u64 data1 = uload64le(address + 8 * 1);
+                u64 data2 = uload64le(address + 8 * 2);
+                u64 data3 = uload64le(address + 8 * 3);
+                u64 data4 = uload64le(address + 8 * 4);
+                u64 data5 = uload64le(address + 8 * 5);
+                u64 data6 = uload64le(address + 8 * 6);
+                u64 data7 = uload64le(address + 8 * 7);
+                crc = u64_crc32(crc, data0);
+                crc = u64_crc32(crc, data1);
+                crc = u64_crc32(crc, data2);
+                crc = u64_crc32(crc, data3);
+                crc = u64_crc32(crc, data4);
+                crc = u64_crc32(crc, data5);
+                crc = u64_crc32(crc, data6);
+                crc = u64_crc32(crc, data7);
                 address += 64;
                 size -= 64;
             }
-#endif
+
+            /*
+            u32 c0 = crc;
+
+            constexpr size_t block0_size = g_skip_blocks * g_skip_block0_size;
+            constexpr size_t block1_size = g_skip_blocks * g_skip_block1_size;
+            constexpr size_t block2_size = g_skip_blocks * g_skip_block2_size;
+
+            while (size >= block0_size)
+            {
+                u32 c1 = 0;
+                u32 c2 = 0;
+                for (int i = 0; i < g_skip_block0_size; i += 32)
+                {
+                    c0 = u64_crc32(c0, uload64le(address + 0 * g_skip_block0_size + 0 * 8));
+                    c1 = u64_crc32(c1, uload64le(address + 1 * g_skip_block0_size + 0 * 8));
+                    c2 = u64_crc32(c2, uload64le(address + 2 * g_skip_block0_size + 0 * 8));
+
+                    c0 = u64_crc32(c0, uload64le(address + 0 * g_skip_block0_size + 1 * 8));
+                    c1 = u64_crc32(c1, uload64le(address + 1 * g_skip_block0_size + 1 * 8));
+                    c2 = u64_crc32(c2, uload64le(address + 2 * g_skip_block0_size + 1 * 8));
+
+                    c0 = u64_crc32(c0, uload64le(address + 0 * g_skip_block0_size + 2 * 8));
+                    c1 = u64_crc32(c1, uload64le(address + 1 * g_skip_block0_size + 2 * 8));
+                    c2 = u64_crc32(c2, uload64le(address + 2 * g_skip_block0_size + 2 * 8));
+
+                    c0 = u64_crc32(c0, uload64le(address + 0 * g_skip_block0_size + 3 * 8));
+                    c1 = u64_crc32(c1, uload64le(address + 1 * g_skip_block0_size + 3 * 8));
+                    c2 = u64_crc32(c2, uload64le(address + 2 * g_skip_block0_size + 3 * 8));
+
+                    address += 32;
+                }
+
+                c0 = skip_block(c0, g_crc32_block0_skip_table) ^ c1;
+                c0 = skip_block(c0, g_crc32_block0_skip_table) ^ c2;
+                address += (g_skip_blocks - 1) * g_skip_block0_size;
+                size -= block0_size;
+            }
+
+            while (size >= block1_size)
+            {
+                u32 c1 = 0;
+                u32 c2 = 0;
+                for (int i = 0; i < g_skip_block1_size; i += 8)
+                {
+                    c0 = u64_crc32(c0, uload64le(address + 0 * g_skip_block1_size));
+                    c1 = u64_crc32(c1, uload64le(address + 1 * g_skip_block1_size));
+                    c2 = u64_crc32(c2, uload64le(address + 2 * g_skip_block1_size));
+                    address += 8;
+                }
+
+                c0 = skip_block(c0, g_crc32_block1_skip_table) ^ c1;
+                c0 = skip_block(c0, g_crc32_block1_skip_table) ^ c2;
+                address += (g_skip_blocks - 1) * g_skip_block1_size;
+                size -= block1_size;
+            }
+
+            while (size >= block2_size)
+            {
+                u32 c1 = 0;
+                u32 c2 = 0;
+                for (int i = 0; i < g_skip_block2_size; i += 8)
+                {
+                    c0 = u64_crc32(c0, uload64le(address + 0 * g_skip_block2_size));
+                    c1 = u64_crc32(c1, uload64le(address + 1 * g_skip_block2_size));
+                    c2 = u64_crc32(c2, uload64le(address + 2 * g_skip_block2_size));
+                    address += 8;
+                }
+
+                c0 = skip_block(c0, g_crc32_block2_skip_table) ^ c1;
+                c0 = skip_block(c0, g_crc32_block2_skip_table) ^ c2;
+                address += (g_skip_blocks - 1) * g_skip_block2_size;
+                size -= block2_size;
+            }
+
+            crc = c0;
+            */
+
+#endif // HARDWARE_U64_CRC32
 
             while (size >= 8)
             {
-                crc = u64_crc32(crc, address);
+                u64 data = uload64le(address);
+                crc = u64_crc32(crc, data);
                 address += 8;
                 size -= 8;
             }
@@ -896,6 +1068,10 @@ namespace
 
         return ~crc;
     }
+
+    // ----------------------------------------------------------------------------------------
+    // crc32c
+    // ----------------------------------------------------------------------------------------
 
     u32 crc32c(u32 crc, const u8* address, size_t size)
     {
@@ -910,25 +1086,163 @@ namespace
                 crc = u8_crc32c(crc, *address++);
             }
 
-#ifdef HARDWARE_U64_CRC32C
-            while (size >= 64)
+#if defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
+
+            constexpr size_t SEGMENT_BYTES = 256;
+            constexpr size_t BLOCK_BYTES = 256 * 4 + 8;
+
+            const poly64_t k0 = 0x8d96551c;
+            const poly64_t k1 = 0xbd6f81f8;
+            const poly64_t k2 = 0xdcb17aa4;
+
+            while (size >= BLOCK_BYTES)
             {
-                crc = u64_crc32c(crc, address + 8 * 0);
-                crc = u64_crc32c(crc, address + 8 * 1);
-                crc = u64_crc32c(crc, address + 8 * 2);
-                crc = u64_crc32c(crc, address + 8 * 3);
-                crc = u64_crc32c(crc, address + 8 * 4);
-                crc = u64_crc32c(crc, address + 8 * 5);
-                crc = u64_crc32c(crc, address + 8 * 6);
-                crc = u64_crc32c(crc, address + 8 * 7);
-                address += 64;
-                size -= 64;
+                u32 crc0 = crc;
+                u32 crc1 = 0;
+                u32 crc2 = 0;
+                u32 crc3 = 0;
+
+                #define CRC32C_32BYTES(idx) \
+                    crc1 = u64_crc32c(crc1, uload64(address + SEGMENT_BYTES * 1 + (idx) * 8)); \
+                    crc2 = u64_crc32c(crc2, uload64(address + SEGMENT_BYTES * 2 + (idx) * 8)); \
+                    crc3 = u64_crc32c(crc3, uload64(address + SEGMENT_BYTES * 3 + (idx) * 8)); \
+                    crc0 = u64_crc32c(crc0, uload64(address + SEGMENT_BYTES * 0 + (idx) * 8));
+
+                CRC32C_32BYTES(0 * 8 + 0);
+                CRC32C_32BYTES(0 * 8 + 1);
+                CRC32C_32BYTES(0 * 8 + 2);
+                CRC32C_32BYTES(0 * 8 + 3);
+                CRC32C_32BYTES(0 * 8 + 4);
+                CRC32C_32BYTES(0 * 8 + 5);
+                CRC32C_32BYTES(0 * 8 + 6);
+                CRC32C_32BYTES(0 * 8 + 7);
+
+                CRC32C_32BYTES(1 * 8 + 0);
+                CRC32C_32BYTES(1 * 8 + 1);
+                CRC32C_32BYTES(1 * 8 + 2);
+                CRC32C_32BYTES(1 * 8 + 3);
+                CRC32C_32BYTES(1 * 8 + 4);
+                CRC32C_32BYTES(1 * 8 + 5);
+                CRC32C_32BYTES(1 * 8 + 6);
+                CRC32C_32BYTES(1 * 8 + 7);
+
+                CRC32C_32BYTES(2 * 8 + 0);
+                CRC32C_32BYTES(2 * 8 + 1);
+                CRC32C_32BYTES(2 * 8 + 2);
+                CRC32C_32BYTES(2 * 8 + 3);
+                CRC32C_32BYTES(2 * 8 + 4);
+                CRC32C_32BYTES(2 * 8 + 5);
+                CRC32C_32BYTES(2 * 8 + 6);
+                CRC32C_32BYTES(2 * 8 + 7);
+
+                CRC32C_32BYTES(3 * 8 + 0);
+                CRC32C_32BYTES(3 * 8 + 1);
+                CRC32C_32BYTES(3 * 8 + 2);
+                CRC32C_32BYTES(3 * 8 + 3);
+                CRC32C_32BYTES(3 * 8 + 4);
+                CRC32C_32BYTES(3 * 8 + 5);
+                CRC32C_32BYTES(3 * 8 + 6);
+                CRC32C_32BYTES(3 * 8 + 7);
+
+                #undef CRC32C_32BYTES
+
+                crc = u64_crc32c(crc3, uload64le(address + 1024));
+
+                u64 t2 = u64(vmull_p64(crc2, k2));
+                u64 t1 = u64(vmull_p64(crc1, k1));
+                u64 t0 = u64(vmull_p64(crc0, k0));
+
+                crc ^= u64_crc32c(0, t2);
+                crc ^= u64_crc32c(0, t1);
+                crc ^= u64_crc32c(0, t0);
+
+                address += BLOCK_BYTES;
+                size -= BLOCK_BYTES;
             }
-#endif
+
+#elif defined(HARDWARE_U64_CRC32C)
+
+            u32 c0 = crc;
+
+            constexpr size_t block0_size = g_skip_blocks * g_skip_block0_size;
+            constexpr size_t block1_size = g_skip_blocks * g_skip_block1_size;
+            constexpr size_t block2_size = g_skip_blocks * g_skip_block2_size;
+
+            while (size >= block0_size)
+            {
+                u32 c1 = 0;
+                u32 c2 = 0;
+                for (int i = 0; i < g_skip_block0_size; i += 32)
+                {
+                    c0 = u64_crc32c(c0, uload64le(address + 0 * g_skip_block0_size + 0 * 8));
+                    c1 = u64_crc32c(c1, uload64le(address + 1 * g_skip_block0_size + 0 * 8));
+                    c2 = u64_crc32c(c2, uload64le(address + 2 * g_skip_block0_size + 0 * 8));
+
+                    c0 = u64_crc32c(c0, uload64le(address + 0 * g_skip_block0_size + 1 * 8));
+                    c1 = u64_crc32c(c1, uload64le(address + 1 * g_skip_block0_size + 1 * 8));
+                    c2 = u64_crc32c(c2, uload64le(address + 2 * g_skip_block0_size + 1 * 8));
+
+                    c0 = u64_crc32c(c0, uload64le(address + 0 * g_skip_block0_size + 2 * 8));
+                    c1 = u64_crc32c(c1, uload64le(address + 1 * g_skip_block0_size + 2 * 8));
+                    c2 = u64_crc32c(c2, uload64le(address + 2 * g_skip_block0_size + 2 * 8));
+
+                    c0 = u64_crc32c(c0, uload64le(address + 0 * g_skip_block0_size + 3 * 8));
+                    c1 = u64_crc32c(c1, uload64le(address + 1 * g_skip_block0_size + 3 * 8));
+                    c2 = u64_crc32c(c2, uload64le(address + 2 * g_skip_block0_size + 3 * 8));
+
+                    address += 32;
+                }
+
+                c0 = skip_block(c0, g_crc32c_block0_skip_table) ^ c1;
+                c0 = skip_block(c0, g_crc32c_block0_skip_table) ^ c2;
+                address += (g_skip_blocks - 1) * g_skip_block0_size;
+                size -= block0_size;
+            }
+
+            while (size >= block1_size)
+            {
+                u32 c1 = 0;
+                u32 c2 = 0;
+                for (int i = 0; i < g_skip_block1_size; i += 8)
+                {
+                    c0 = u64_crc32c(c0, uload64le(address + 0 * g_skip_block1_size));
+                    c1 = u64_crc32c(c1, uload64le(address + 1 * g_skip_block1_size));
+                    c2 = u64_crc32c(c2, uload64le(address + 2 * g_skip_block1_size));
+                    address += 8;
+                }
+
+                c0 = skip_block(c0, g_crc32c_block1_skip_table) ^ c1;
+                c0 = skip_block(c0, g_crc32c_block1_skip_table) ^ c2;
+                address += (g_skip_blocks - 1) * g_skip_block1_size;
+                size -= block1_size;
+            }
+
+            while (size >= block2_size)
+            {
+                u32 c1 = 0;
+                u32 c2 = 0;
+                for (int i = 0; i < g_skip_block2_size; i += 8)
+                {
+                    c0 = u64_crc32c(c0, uload64le(address + 0 * g_skip_block2_size));
+                    c1 = u64_crc32c(c1, uload64le(address + 1 * g_skip_block2_size));
+                    c2 = u64_crc32c(c2, uload64le(address + 2 * g_skip_block2_size));
+                    address += 8;
+                }
+
+                c0 = skip_block(c0, g_crc32c_block2_skip_table) ^ c1;
+                c0 = skip_block(c0, g_crc32c_block2_skip_table) ^ c2;
+                address += (g_skip_blocks - 1) * g_skip_block2_size;
+                size -= block2_size;
+            }
+
+            crc = c0;
+
+#endif // HARDWARE_U64_CRC32C
 
             while (size >= 8)
             {
-                crc = u64_crc32c(crc, address);
+                u64 data = uload64le(address);
+                crc = u64_crc32c(crc, data);
                 address += 8;
                 size -= 8;
             }
@@ -942,6 +1256,58 @@ namespace
         return ~crc;
     }
 
+    // ----------------------------------------------------------------------------------------
+    // parallel_crc
+    // ----------------------------------------------------------------------------------------
+
+    template<typename Compute, typename Combine>
+    u32 parallel_crc(Compute compute, Combine combine, u32 crc, ConstMemory memory)
+    {
+        constexpr size_t KB = 1 << 10;
+        constexpr size_t MIN_BLOCK = 32 * KB;
+
+        if (memory.size < MIN_BLOCK * 2)
+        {
+            // don't bother multi-threading if we don't have plenty of input
+            return compute(crc, memory.address, memory.size);
+        }
+
+        size_t block = std::max(MIN_BLOCK, memory.size / (ThreadPool::getHardwareConcurrency() * 2));
+        int threads = int(memory.size / block);
+
+        std::vector<u32> temp(threads);
+
+        ConcurrentQueue q;
+
+        for (int i = 1; i < threads; ++i)
+        {
+            size_t left = memory.size - block * i;
+            size_t bytes = (i == threads - 1) ? left : std::min(block, left);
+
+            const u8* address = memory.address + block * i;
+
+            q.enqueue([compute, &temp, i, address, bytes]
+            {
+                temp[i] = compute(0, address, bytes);
+            });
+        }
+
+        // process the first block in the current thread
+        crc = compute(crc, memory.address, std::min(block, memory.size));
+
+        q.wait();
+
+        for (int i = 1; i < threads; ++i)
+        {
+            size_t left = memory.size - block * i;
+            size_t bytes = (i == threads - 1) ? left : std::min(block, left);
+
+            crc = combine(crc, temp[i], bytes);
+        }
+
+        return crc;
+    }
+
 } // namespace
 
 namespace mango
@@ -949,112 +1315,24 @@ namespace mango
 
     u32 crc32_combine(u32 crc0, u32 crc1, size_t length1)
     {
-        crc0 = crc_combine(crc0, u64(length1), crc32_polynomial);
+        crc0 = ::crc_combine(crc0, length1, crc32_combine_table);
         return crc0 ^ crc1;
     }
 
     u32 crc32c_combine(u32 crc0, u32 crc1, size_t length1)
     {
-        crc0 = crc_combine(crc0, u64(length1), crc32c_polynomial);
+        crc0 = ::crc_combine(crc0, length1, crc32c_combine_table);
         return crc0 ^ crc1;
     }
 
     u32 crc32(u32 crc, ConstMemory memory)
     {
-        constexpr size_t KB = 1 << 10;
-        constexpr size_t MIN_BLOCK = 32 * KB;
-
-        if (memory.size < MIN_BLOCK * 2)
-        {
-            // don't bother multi-threading if we don't have plenty of input
-            return ::crc32(crc, memory.address, memory.size);
-        }
-
-        size_t block = std::max(MIN_BLOCK, memory.size / (ThreadPool::getHardwareConcurrency() * 2));
-        int threads = int(memory.size / block);
-
-        std::vector<u32> temp(threads);
-
-        ConcurrentQueue q;
-
-        for (int i = 1; i < threads; ++i)
-        {
-            q.enqueue([i, memory, &temp, block]
-            {
-                size_t left = memory.size - i * block;
-                size_t bytes = std::min(block, left);
-                temp[i] = ::crc32(0, memory.address + i * block, bytes);
-            });
-        }
-
-        // process the first block in the current thread
-        crc = ::crc32(crc, memory.address, block);
-
-        q.wait();
-
-        for (int i = 1; i < threads; ++i)
-        {
-            size_t left = memory.size - i * block;
-            size_t bytes = std::min(block, left);
-            crc = ::crc32_combine(crc, temp[i], bytes);
-        }
-
-        size_t leftover = memory.size - block * threads;
-        if (leftover > 0)
-        {
-            crc = ::crc32(crc, memory.address + block * threads, leftover);
-        }
-
-        return crc;
+        return parallel_crc(::crc32, ::crc32_combine, crc, memory);
     }
 
     u32 crc32c(u32 crc, ConstMemory memory)
     {
-        constexpr size_t KB = 1 << 10;
-        constexpr size_t MIN_BLOCK = 32 * KB;
-
-        if (memory.size < MIN_BLOCK * 2)
-        {
-            // don't bother multi-threading if we don't have plenty of input
-            return ::crc32c(crc, memory.address, memory.size);
-        }
-
-        size_t block = std::max(MIN_BLOCK, memory.size / (ThreadPool::getHardwareConcurrency() * 2));
-        int threads = int(memory.size / block);
-
-        std::vector<u32> temp(threads);
-
-        ConcurrentQueue q;
-
-        for (int i = 1; i < threads; ++i)
-        {
-            q.enqueue([i, memory, &temp, block]
-            {
-                size_t left = memory.size - i * block;
-                size_t bytes = std::min(block, left);
-                temp[i] = ::crc32c(0, memory.address + i * block, bytes);
-            });
-        }
-
-        // process the first block in the current thread
-        crc = ::crc32c(crc, memory.address, block);
-
-        q.wait();
-
-        for (int i = 1; i < threads; ++i)
-        {
-            size_t left = memory.size - i * block;
-            size_t bytes = std::min(block, left);
-            crc = ::crc32c_combine(crc, temp[i], bytes);
-        }
-
-        size_t leftover = memory.size - block * threads;
-        if (leftover > 0)
-        {
-            crc = ::crc32c(crc, memory.address + block * threads, leftover);
-        }
-
-        return crc;
+        return parallel_crc(::crc32c, ::crc32c_combine, crc, memory);
     }
 
 } // namespace mango

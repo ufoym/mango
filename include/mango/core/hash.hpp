@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #pragma once
 
@@ -9,6 +9,11 @@
 
 namespace mango
 {
+
+    // Hardware acceleration support:
+    //
+    // - ARM SHA (SHA1, SHA2)
+    // - Intel SHA (SHA1, SHA2)
 
     // -----------------------------------------------------------------------
     // Hash - generic hashing function return type
@@ -58,8 +63,7 @@ namespace mango
     using MD5 = Hash<u32, 4>;
     using SHA1 = Hash<u32, 5>;
     using SHA2 = Hash<u32, 8>;
-    using XX3HASH64 = u64;
-    using XX3HASH128 = Hash<u64, 2>;
+    using XX3H128 = Hash<u64, 2>;
 
     MD5 md5(ConstMemory memory);
     SHA1 sha1(ConstMemory memory);
@@ -67,8 +71,7 @@ namespace mango
 
     u32 xxhash32(u32 seed, ConstMemory memory);
     u64 xxhash64(u64 seed, ConstMemory memory);
-
-    XX3HASH64 xx3hash64(u64 seed, ConstMemory memory);
-    XX3HASH128 xx3hash128(u64 seed, ConstMemory memory);
+    u64 xx3hash64(u64 seed, ConstMemory memory);
+    XX3H128 xx3hash128(u64 seed, ConstMemory memory);
 
 } // namespace mango

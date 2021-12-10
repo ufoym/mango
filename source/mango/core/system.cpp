@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/system.hpp>
 #include <mango/core/cpuinfo.hpp>
@@ -15,7 +15,7 @@ namespace mango
 	// getSystemInfo()
 	// ----------------------------------------------------------------------------
 
-    std::string getSystemInfo()
+    std::string getPlatformInfo()
     {
         std::stringstream info;
 
@@ -33,6 +33,14 @@ namespace mango
         info << "Endian: BIG ";
 #endif
         info << std::endl;
+
+        return info.str();
+    }
+
+    std::string getSystemInfo()
+    {
+        std::stringstream info;
+        info << getPlatformInfo();
 
         u64 flags = getCPUFlags();
 
@@ -65,6 +73,7 @@ namespace mango
         if (flags & INTEL_BMI1) info << "BMI1 ";
         if (flags & INTEL_BMI2) info << "BMI2 ";
         if (flags & INTEL_SHA) info << "SHA ";
+        if (flags & INTEL_LZCNT) info << "LZCNT ";
         if (flags & INTEL_AVX512F) info << "AVX512F ";
         if (flags & INTEL_AVX512PFI) info << "AVX512PFI ";
         if (flags & INTEL_AVX512ERI) info << "AVX512ERI ";
@@ -74,12 +83,13 @@ namespace mango
         if (flags & INTEL_AVX512DQ) info << "AVX512DQ ";
         if (flags & INTEL_AVX512IFMA) info << "AVX512IFMA ";
         if (flags & INTEL_AVX512VBMI) info << "AVX512VBMI ";
-        if (flags & INTEL_LZCNT) info << "LZCNT ";
+        if (flags & INTEL_AVX512IFMA) info << "AVX512FP16 ";
         if (flags & ARM_NEON) info << "NEON ";
+        if (flags & ARM_CRC32) info << "CRC32 ";
         if (flags & ARM_AES) info << "AES ";
         if (flags & ARM_SHA1) info << "SHA1 ";
         if (flags & ARM_SHA2) info << "SHA2 ";
-        if (flags & ARM_CRC32) info << "CRC32 ";
+        if (flags & ARM_PMULL) info << "PMULL ";
         info << std::endl;
 
         // NOTE: These are flags used to compile the mango library and have no relevance to
@@ -164,12 +174,12 @@ namespace mango
         info << "NEON ";
     #endif
 
-    #if defined(__ARM_FEATURE_CRYPTO)
-        info << "SHA1 SHA2 ";
-    #endif
-
     #if defined(__ARM_FEATURE_CRC32)
         info << "CRC32 ";
+    #endif
+
+    #if defined(__ARM_FEATURE_CRYPTO)
+        info << "CRYPTO ";
     #endif
 
 #else

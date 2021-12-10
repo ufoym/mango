@@ -1,12 +1,10 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/pointer.hpp>
 #include <mango/core/system.hpp>
 #include <mango/image/image.hpp>
-
-#ifdef MANGO_ENABLE_IMAGE_BMP
 
 // Specification:
 // https://en.wikipedia.org/wiki/BMP_file_format
@@ -15,6 +13,7 @@
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     // ------------------------------------------------------------
     // .bmp parser
@@ -744,12 +743,12 @@ namespace
         const int width = dest.width;
         const int height = dest.height;
 
-        Bitmap temp(width, height, Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8));
+        Bitmap temp(width, height, Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8));
 
         for (int y = 0; y < height; ++y)
         {
             u8* s = indices.address<u8>(0, y);
-            ColorBGRA* d = temp.address<ColorBGRA>(0, y);
+            Color* d = temp.address<Color>(0, y);
             for (int x = 0; x < width; ++x)
             {
                 d[x] = palette[s[x]];
@@ -788,7 +787,7 @@ namespace
             const u8* p = header.palette;
             for (u32 i = 0; i < palette.size; ++i)
             {
-                palette[i] = ColorBGRA(p[2], p[1], p[0], 0xff);
+                palette[i] = Color(p[2], p[1], p[0], 0xff);
                 p += components;
             }
         }
@@ -1194,7 +1193,7 @@ namespace
             return m_image_header;
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* ptr_palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
             MANGO_UNREFERENCED(level);
             MANGO_UNREFERENCED(depth);
@@ -1250,7 +1249,7 @@ namespace
             }
 
             ConstMemory block = m_memory.slice(14);
-            mango::Status result = decodeBitmap(dest, block, m_file_header.offset - 14, false, ptr_palette);
+            mango::Status result = decodeBitmap(dest, block, m_file_header.offset - 14, false, options.palette);
             if (!result)
             {
                 status.setError(result.info);
@@ -1323,7 +1322,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderBMP()
@@ -1334,6 +1333,4 @@ namespace mango
         registerImageEncoder(imageEncode, ".bmp");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_BMP
+} // namespace mango::image

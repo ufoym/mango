@@ -6,11 +6,13 @@
 
 using namespace mango;
 using namespace mango::filesystem;
+using namespace mango::image;
 
 #define ENABLE_LIBPNG
 #define ENABLE_LODEPNG
 #define ENABLE_SPNG
 #define ENABLE_STB
+#define ENABLE_WUFFS
 #define ENABLE_MANGO
 
 // ----------------------------------------------------------------------
@@ -158,6 +160,32 @@ void save_lodepng(const Bitmap& bitmap)
 #endif
 
 // ----------------------------------------------------------------------
+// stb
+// ----------------------------------------------------------------------
+
+#if defined(ENABLE_STB)
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "../jpeg_benchmark/stb_image.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "../jpeg_benchmark/stb_image_write.h"
+
+void load_stb(Memory memory)
+{
+    int width, height, bpp;
+    u8* image = stbi_load_from_memory(memory.address, memory.size, &width, &height, &bpp, 4);
+    free(image);
+}
+
+void save_stb(const Bitmap& bitmap)
+{
+    stbi_write_png("output-stb.png", bitmap.width, bitmap.height, 4, bitmap.image, bitmap.width * 4);
+}
+
+#endif
+
+// ----------------------------------------------------------------------
 // spng
 // ----------------------------------------------------------------------
 
@@ -181,10 +209,6 @@ int read_fn(struct spng_ctx *ctx, void *user, void *data, size_t n)
     unsigned char *dst = (u8*)data;
     unsigned char *src = state->data;
 
-#if defined(TEST_SPNG_STREAM_READ_INFO)
-    printf("libspng bytes read: %lu\n", n);
-#endif
-
     memcpy(dst, src, n);
 
     state->bytes_left -= n;
@@ -207,17 +231,6 @@ unsigned char *getimage_libspng(unsigned char *buf, size_t size, size_t *out_siz
         printf("spng_ctx_new() failed\n");
         return NULL;
     }
-
-    /*struct read_fn_state state;
-    state.data = buf;
-    state.bytes_left = size;
-    r = spng_set_png_stream(ctx, read_fn, &state);
-    if(r)
-    {
-        printf("spng_set_png_stream() error: %s\n", spng_strerror(r));
-        goto err;
-    }*/
-
 
     spng_set_crc_action(ctx, SPNG_CRC_USE, SPNG_CRC_USE);
 
@@ -280,33 +293,129 @@ void load_spng(Memory memory)
 
 void save_spng(const Bitmap& bitmap)
 {
-    // TODO: not supported yet in libspng v0.5.0
+    struct spng_ihdr ihdr;
+
+    ihdr.width = bitmap.width;
+    ihdr.height = bitmap.height;
+    ihdr.bit_depth = 8;
+    ihdr.color_type = SPNG_COLOR_TYPE_TRUECOLOR_ALPHA;
+    ihdr.compression_method = 0;
+    ihdr.filter_method = SPNG_DISABLE_FILTERING;
+    ihdr.interlace_method = SPNG_INTERLACE_NONE;
+
+    unsigned char *image = bitmap.image;
+    size_t image_size = bitmap.width * bitmap.height * 4;
+
+    spng_ctx *enc = spng_ctx_new(SPNG_CTX_ENCODER);
+
+    spng_set_option(enc, SPNG_ENCODE_TO_BUFFER, 1);
+
+    spng_set_ihdr(enc, &ihdr);
+    int r = spng_encode_image(enc, image, image_size, SPNG_FMT_PNG, SPNG_ENCODE_FINALIZE);
+    if(r)
+    {
+        printf("spng_encode_image() error: %s\n", spng_strerror(r));
+        spng_ctx_free(enc);
+        return;
+    }
+
+    size_t png_size;
+    void *png_buf = NULL;
+
+    png_buf = spng_get_png_buffer(enc, &png_size, &r);
+    if(png_buf == NULL)
+    {
+        printf("spng_get_png_buffer() error: %s\n", spng_strerror(r));
+    }
+
+    OutputFileStream file("output-spng.png");
+    file.write(png_buf, png_size);
+
+    free(png_buf);
+    spng_ctx_free(enc);
 }
 
 #endif
 
 // ----------------------------------------------------------------------
-// stb
+// wuffs
 // ----------------------------------------------------------------------
 
-#if defined ENABLE_STB
+#if defined(ENABLE_WUFFS)
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "../jpeg_benchmark/stb_image.h"
+#define WUFFS_IMPLEMENTATION
 
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "../jpeg_benchmark/stb_image_write.h"
+#define WUFFS_CONFIG__MODULES
+#define WUFFS_CONFIG__MODULE__ADLER32
+#define WUFFS_CONFIG__MODULE__AUX__BASE
+#define WUFFS_CONFIG__MODULE__AUX__IMAGE
+#define WUFFS_CONFIG__MODULE__BASE
+#define WUFFS_CONFIG__MODULE__BMP
+#define WUFFS_CONFIG__MODULE__CRC32
+#define WUFFS_CONFIG__MODULE__DEFLATE
+#define WUFFS_CONFIG__MODULE__GIF
+#define WUFFS_CONFIG__MODULE__LZW
+#define WUFFS_CONFIG__MODULE__PNG
+#define WUFFS_CONFIG__MODULE__ZLIB
 
-void load_stb(Memory memory)
+#include "wuffs/wuffs-unsupported-snapshot.c"
+
+class WuffsCallbacks : public wuffs_aux::DecodeImageCallbacks
 {
-    int width, height, bpp;
-    u8* image = stbi_load_from_memory(memory.address, memory.size, &width, &height, &bpp, 4);
-    free(image);
+public:
+    Buffer buffer;
+    Surface surface;
+
+    WuffsCallbacks()
+    {
+    }
+
+    ~WuffsCallbacks()
+    {
+    }
+
+private:
+    wuffs_base__pixel_format SelectPixfmt(const wuffs_base__image_config& image_config) override
+    {
+        return wuffs_base__make_pixel_format(WUFFS_BASE__PIXEL_FORMAT__BGRA_NONPREMUL);
+    }
+
+    AllocPixbufResult AllocPixbuf(const wuffs_base__image_config& image_config, bool allow_uninitialized_memory) override
+    {
+        u32 width = image_config.pixcfg.width();
+        u32 height = image_config.pixcfg.height();
+        buffer.resize(width * height * 4);
+
+        surface = Surface(width, height, Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8), width * 4, buffer);
+
+        wuffs_base__pixel_buffer pixbuf;
+        wuffs_base__status status = pixbuf.set_interleaved(
+            &image_config.pixcfg,
+            wuffs_base__make_table_u8(buffer, surface.stride, surface.height, surface.stride),
+            wuffs_base__empty_slice_u8());
+        if (!status.is_ok())
+        {
+            return AllocPixbufResult(status.message());
+        }
+        return AllocPixbufResult(wuffs_aux::MemOwner(NULL, &free), pixbuf);
+    }
+};
+
+void load_wuffs(Memory memory)
+{
+    wuffs_aux::sync_io::MemoryInput input(memory.address, memory.size);
+    WuffsCallbacks cb;
+
+    wuffs_aux::DecodeImageResult res = wuffs_aux::DecodeImage(cb, input);
+    if (!res.error_message.empty())
+    {
+        printf("%s\n", res.error_message.c_str());
+    }
 }
 
-void save_stb(const Bitmap& bitmap)
+void save_wuffs(const Bitmap& bitmap)
 {
-    stbi_write_png("output-stb.png", bitmap.width, bitmap.height, 4, bitmap.image, bitmap.width * 4);
+    // TODO: not supported.
 }
 
 #endif
@@ -315,29 +424,33 @@ void save_stb(const Bitmap& bitmap)
 // mango
 // ----------------------------------------------------------------------
 
+bool g_option_multithread = true;
+bool g_option_filtering = false;
+int g_option_compression = 4;
+
 #if defined(ENABLE_MANGO)
 
 void load_mango(Memory memory)
 {
     // low-level decoding from memory
-    /*
     ImageDecoder decoder(memory, ".png");
 
     ImageHeader header = decoder.header();
     Bitmap bitmap(header.width, header.height, header.format);
 
     ImageDecodeOptions options;
+    options.multithread = g_option_multithread;
     decoder.decode(bitmap, options);
-    */
 
     // higher-level "easy way"
-    Bitmap bitmap(memory, ".png");
+    //Bitmap bitmap(memory, ".png");
 }
 
 void save_mango(const Bitmap& bitmap)
 {
     ImageEncodeOptions options;
-    options.compression = 4;
+    options.compression = g_option_compression;
+    options.filtering = g_option_filtering;
     bitmap.save("output-mango.png", options);
 }
 
@@ -373,7 +486,29 @@ int main(int argc, const char* argv[])
         exit(1);
     }
 
+    printf("%s\n", getSystemInfo().c_str());
+
     const char* filename = argv[1];
+
+    for (int i = 2; i < argc; ++i)
+    {
+        if (!strcmp(argv[i], "--nomt"))
+        {
+            g_option_multithread = false;
+        }
+        else if (!strcmp(argv[i], "--filter"))
+        {
+            g_option_filtering = true;
+        }
+        else if (!strcmp(argv[i], "-compression") && i <= (argc - 2))
+        {
+            g_option_compression = std::atoi(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--debug"))
+        {
+            debugPrintEnable(true);
+        }
+    }
 
     Bitmap bitmap(filename, Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8));
 
@@ -393,12 +528,16 @@ int main(int argc, const char* argv[])
     test("lodepng: ", load_lodepng, save_lodepng, buffer, bitmap);
 #endif
 
+#if defined(ENABLE_STB)
+    test("stb:     ", load_stb, save_stb, buffer, bitmap);
+#endif
+
 #if defined(ENABLE_SPNG)
     test("spng:    ", load_spng, save_spng, buffer, bitmap);
 #endif
 
-#if defined(ENABLE_STB)
-    test("stb:     ", load_stb, save_stb, buffer, bitmap);
+#if defined(ENABLE_WUFFS)
+    test("wuffs:   ", load_wuffs, save_wuffs, buffer, bitmap);
 #endif
 
 #if defined(ENABLE_MANGO)

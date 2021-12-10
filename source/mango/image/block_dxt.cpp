@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2016 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/endian.hpp>
 #include <mango/image/compression.hpp>
@@ -12,6 +12,9 @@ namespace
     // ------------------------------------------------------------
     // Based on NVIDIA DXT decoder
     // ------------------------------------------------------------
+
+    // Fixed based on Khronos specification:
+    // https://www.khronos.org/registry/DataFormat/specs/1.3/dataformat.1.3.html#s3tc_bc2
 
     struct DXTColBlock
     {
@@ -38,13 +41,14 @@ namespace
         dest[0] = u8((r << 3) | (r >> 2));
         dest[1] = u8((g << 2) | (g >> 4));
         dest[2] = u8((b << 3) | (b >> 2));
+        dest[3] = 0xff;
     }
 
     // ------------------------------------------------------------
     // block decoders
     // ------------------------------------------------------------
 
-    void GetColorBlockColors(u32* color, const DXTColBlock* block, u8 alpha)
+    void GetColorBlockColors(u32* color, const DXTColBlock* block, u8 alpha, bool isFourColorBlock)
     {
         u8* dest = reinterpret_cast<u8*>(color);
 
@@ -53,47 +57,45 @@ namespace
 
         unpack565(dest + 0, a); // bit code 00
         unpack565(dest + 4, b); // bit code 01
-        dest[3] = alpha;
-        dest[7] = alpha;
 
-        if (a > b)
+        if ((a > b) || isFourColorBlock)
         {
-            // four-color block: derive the other two colors
+            // four-color block
 
             // bit code 10
             dest[8] = u8(u16(dest[0] * 2 + dest[4]) / 3);
             dest[9] = u8(u16(dest[1] * 2 + dest[5]) / 3);
             dest[10] = u8(u16(dest[2] * 2 + dest[6]) / 3);
-            dest[11] = alpha;
+            dest[11] = 0xff;
 
             // bitcode 11
             dest[12] = u8(u16(dest[0] + dest[4] * 2) / 3);
             dest[13] = u8(u16(dest[1] + dest[5] * 2) / 3);
             dest[14] = u8(u16(dest[2] + dest[6] * 2) / 3);
-            dest[15] = alpha;
+            dest[15] = 0xff;
         }
         else
         {
-            // three-color block: derive the other color
+            // three-color block
 
             // bit code 10
             dest[8] = u8(u16(dest[0] + dest[4]) / 2);
             dest[9] = u8(u16(dest[1] + dest[5]) / 2);
             dest[10] = u8(u16(dest[2] + dest[6]) / 2);
-            dest[11] = alpha;
+            dest[11] = 0xff;
 
-            // bit code 11: transparent
+            // bit code 11: opaque black
             dest[12] = 0;
             dest[13] = 0;
             dest[14] = 0;
-            dest[15] = 0;
+            dest[15] = alpha;
         }
     }
 
-    void DecodeColorBlock(u8* dest, size_t stride, const DXTColBlock* colorBlock, u8 alpha)
+    void DecodeColorBlock(u8* dest, size_t stride, const DXTColBlock* colorBlock, u8 alpha, bool isFourColorBlock)
     {
         u32 color[4];
-        GetColorBlockColors(color, colorBlock, alpha);
+        GetColorBlockColors(color, colorBlock, alpha, isFourColorBlock);
 
         u32 data = uload32le(&colorBlock->data);
 
@@ -296,14 +298,21 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void decode_block_dxt1(const TextureCompressionInfo& info, u8* out, const u8* in, size_t stride)
     {
         MANGO_UNREFERENCED(info);
         const DXTColBlock* blockColor = reinterpret_cast<const DXTColBlock*>(in + 0);
-        DecodeColorBlock(out, stride, blockColor, 0xff);
+        DecodeColorBlock(out, stride, blockColor, 0xff, false);
+    }
+
+    void decode_block_dxt1a(const TextureCompressionInfo& info, u8* out, const u8* in, size_t stride)
+    {
+        MANGO_UNREFERENCED(info);
+        const DXTColBlock* blockColor = reinterpret_cast<const DXTColBlock*>(in + 0);
+        DecodeColorBlock(out, stride, blockColor, 0, false);
     }
 
     void decode_block_dxt3(const TextureCompressionInfo& info, u8* out, const u8* in, size_t stride)
@@ -311,7 +320,7 @@ namespace mango
         MANGO_UNREFERENCED(info);
         const DXTAlphaBlockExplicit* alphaBlock = reinterpret_cast<const DXTAlphaBlockExplicit *>(in + 0);
         const DXTColBlock* colorBlock = reinterpret_cast<const DXTColBlock*>(in + 8);
-        DecodeColorBlock(out + 0, stride, colorBlock, 0);
+        DecodeColorBlock(out + 0, stride, colorBlock, 0, true);
         DecodeAlphaExplicit(out + 3, stride, alphaBlock);
     }
 
@@ -320,7 +329,7 @@ namespace mango
         MANGO_UNREFERENCED(info);
         const DXTAlphaBlock3BitLinear* alphaBlock = reinterpret_cast<const DXTAlphaBlock3BitLinear *>(in + 0);
         const DXTColBlock* colorBlock = reinterpret_cast<const DXTColBlock*>(in + 8);
-        DecodeColorBlock(out + 0, stride, colorBlock, 0);
+        DecodeColorBlock(out + 0, stride, colorBlock, 0, true);
         Decode3BitLinear(out + 3, 4, stride, alphaBlock);
     }
 
@@ -362,4 +371,4 @@ namespace mango
         Decode3BitLinear(out + 3, 4, stride, alphaBlock);
     }
 
-} // namespace mango
+} // namespace mango::image

@@ -5,8 +5,8 @@
 #include <cstring>
 #include "jpeg.hpp"
 
-namespace mango {
-namespace jpeg {
+namespace mango::jpeg
+{
 
     // ----------------------------------------------------------------------------
     // Huffman
@@ -147,8 +147,10 @@ namespace jpeg {
             }
 
             DataType offset = (x >> (JPEG_REGISTER_BITS - size)) + valueOffset[size];
+#if 0
             if (offset > 255)
                 return 0; // decoding error
+#endif
             symbol = value[offset];
         }
 
@@ -416,5 +418,4 @@ namespace jpeg {
         }
     }
 
-} // namespace jpeg
-} // namespace mango
+} // namespace mango::jpeg

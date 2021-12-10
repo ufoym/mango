@@ -1,13 +1,11 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <mango/core/system.hpp>
 #include <mango/core/pointer.hpp>
 #include <mango/core/string.hpp>
 #include <mango/image/image.hpp>
-
-#ifdef MANGO_ENABLE_IMAGE_PVR
 
 // http://cdn.imgtec.com/sdk-documentation/PVR+File+Format.Specification.Legacy.pdf
 // http://cdn.imgtec.com/sdk-documentation/PVR+File+Format.Specification.pdf
@@ -15,6 +13,7 @@
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     // ----------------------------------------------------------------------------
     // EightCC
@@ -38,8 +37,8 @@ namespace
             u8(eightcc >> 32),
         };
 
-        ColorRGBA size = 0;
-        ColorRGBA offset = 0;
+        Color size = 0;
+        Color offset = 0;
         int bits = 0;
 
         for (int i = 0; i < 4; ++i)
@@ -637,9 +636,9 @@ namespace
             return m_pvr_header.getMemory(m_memory, level, depth, face);
         }
 
-        ImageDecodeStatus decode(const Surface& dest, Palette* palette, int level, int depth, int face) override
+        ImageDecodeStatus decode(const Surface& dest, const ImageDecodeOptions& options, int level, int depth, int face) override
         {
-            MANGO_UNREFERENCED(palette);
+            MANGO_UNREFERENCED(options);
 
             ImageDecodeStatus status;
 
@@ -682,7 +681,7 @@ namespace
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     void registerImageDecoderPVR()
@@ -690,6 +689,4 @@ namespace mango
         registerImageDecoder(createInterface, ".pvr");
     }
 
-} // namespace mango
-
-#endif // MANGO_ENABLE_IMAGE_PVR
+} // namespace mango::image

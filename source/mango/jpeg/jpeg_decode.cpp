@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <cmath>
 #include <mango/core/endian.hpp>
@@ -8,8 +8,8 @@
 #include <mango/core/thread.hpp>
 #include "jpeg.hpp"
 
-namespace mango {
-namespace jpeg {
+namespace mango::jpeg
+{
 
     // ----------------------------------------------------------------------------
     // utilities
@@ -94,7 +94,7 @@ namespace jpeg {
 
     void BitBuffer::fill()
     {
-#if defined(MANGO_CPU_64BIT) && defined(JPEG_ENABLE_SSE2)
+#if defined(MANGO_CPU_64BIT) && defined(MANGO_ENABLE_SSE2)
         if (ptr + 8 <= end)
         {
             u64 x = uload64(ptr);
@@ -141,12 +141,6 @@ namespace jpeg {
         restartInterval = 0;
         restartCounter = 0;
 
-#ifdef JPEG_ENABLE_THREAD
-        m_hardware_concurrency = ThreadPool::getHardwareConcurrency();
-#else
-        m_hardware_concurrency = 1;
-#endif
-
         for (int i = 0; i < JPEG_MAX_COMPS_IN_SCAN; ++i)
         {
             quantTable[i].table = quantTableVector.data() + i * 64;
@@ -154,38 +148,9 @@ namespace jpeg {
 
         m_surface = nullptr;
 
-        u64 flags = getCPUFlags();
-        MANGO_UNREFERENCED(flags);
-
-        // configure default implementation
-        processState.idct = idct8;
-        processState.colorspace = ColorSpace::CMYK;
-
-#if defined(JPEG_ENABLE_NEON)
-        processState.idct = idct_neon;
-        m_idct_name = "NEON iDCT";
-#endif
-
-#if defined(JPEG_ENABLE_SSE2)
-        if (flags & INTEL_SSE2)
-        {
-            processState.idct = idct_sse2;
-            m_idct_name = "SSE2 iDCT";
-        }
-#endif
-
         if (isJPEG(memory))
         {
             parse(memory, false);
-
-            // precision is not known until parse() above is complete
-            if (precision == 12)
-            {
-                // Force 12 bit idct
-                // This will round down to 8 bit precision until we have a 12 bit capable color conversion
-                processState.idct = idct12;
-                m_idct_name = "12 bit iDCT";
-            }
         }
         else
         {
@@ -677,13 +642,8 @@ namespace jpeg {
         ymcu = height / yblock;
         mcus = xmcu * ymcu;
 
-        // clipping
-        xclip = xsize % xblock;
-        yclip = ysize % yblock;
-
-        debugPrint("  %d MCUs (%d x %d) -> (%d x %d)\n", mcus, xmcu, ymcu, xmcu*xblock, ymcu*yblock);
+        debugPrint("  %d MCUs (%d x %d) -> (%d x %d)\n", mcus, xmcu, ymcu, xmcu * xblock, ymcu * yblock);
         debugPrint("  Image: %d x %d\n", xsize, ysize);
-        debugPrint("  Clip: %d x %d\n", xclip, yclip);
 
         // configure header
         header.width = xsize;
@@ -873,7 +833,6 @@ namespace jpeg {
 
         if (is_arithmetic)
         {
-#ifdef MANGO_ENABLE_LICENSE_BSD
             Arithmetic& arithmetic = decodeState.arithmetic;
 
             decodeState.buffer.ptr = p;
@@ -928,7 +887,6 @@ namespace jpeg {
                 decodeState.decode = arith_decode_mcu;
                 decodeSequential();
             }
-#endif // MANGO_ENABLE_LICENSE_BSD
         }
         else
         {
@@ -1060,7 +1018,7 @@ namespace jpeg {
         }
     }
 
-    void Parser::processDHT(const u8* p)
+    void Parser::processDHT(const u8* p, const u8* end)
     {
         debugPrint("[ DHT ]\n");
 
@@ -1096,6 +1054,12 @@ namespace jpeg {
             debugPrint("  Huffman table #%d table class: %d\n", Th, Tc);
             debugPrint("    codes: ");
 
+            if (p >= end - 17)
+            {
+                header.setError("Data overflow.");
+                return;
+            }
+
             int count = 0;
 
             for (int i = 1; i <= 16; ++i)
@@ -1114,6 +1078,12 @@ namespace jpeg {
             if (Lh < 0 || count > 256)
             {
                 header.setError("Incorrect huffman table data.");
+                return;
+            }
+
+            if (p >= end - count)
+            {
+                header.setError("Data overflow.");
                 return;
             }
 
@@ -1294,7 +1264,7 @@ namespace jpeg {
                     break;
 
                 case MARKER_DHT:
-                    processDHT(p);
+                    processDHT(p, end);
                     p = stepMarker(p, end);
                     break;
 
@@ -1473,14 +1443,43 @@ namespace jpeg {
         return false;
     }
 
-    void Parser::configureCPU(SampleType sample)
+    void Parser::configureCPU(SampleType sample, const ImageDecodeOptions& options)
     {
         const char* simd = "";
 
-        u64 flags = getCPUFlags();
+        u64 flags = options.simd ? getCPUFlags() : 0;
         MANGO_UNREFERENCED(flags);
 
-        // configure default implementation
+        // configure idct
+
+        processState.idct = idct8;
+
+#if defined(MANGO_ENABLE_NEON)
+        if (flags & ARM_NEON)
+        {
+            processState.idct = idct_neon;
+            m_idct_name = "iDCT: NEON";
+        }
+#endif
+
+#if defined(MANGO_ENABLE_SSE2)
+        if (flags & INTEL_SSE2)
+        {
+            processState.idct = idct_sse2;
+            m_idct_name = "iDCT: SSE2";
+        }
+#endif
+
+        if (precision == 12)
+        {
+            // Force 12 bit idct
+            // This will round down to 8 bit precision until we have a 12 bit capable color conversion
+            processState.idct = idct12;
+            m_idct_name = "iDCT: 12 bit";
+        }
+
+        // configure block processing
+
         switch (sample)
         {
             case JPEG_U8_Y:
@@ -1528,7 +1527,7 @@ namespace jpeg {
         // CMYK / YCCK
         processState.process_cmyk = process_cmyk_bgra;
 
-#if defined(JPEG_ENABLE_NEON)
+#if defined(MANGO_ENABLE_NEON)
 
         if (flags & ARM_NEON)
         {
@@ -1569,7 +1568,7 @@ namespace jpeg {
 
 #endif
 
-#if defined(JPEG_ENABLE_SSE2)
+#if defined(MANGO_ENABLE_SSE2)
 
         if (flags & INTEL_SSE2)
         {
@@ -1598,9 +1597,9 @@ namespace jpeg {
             }
         }
 
-#endif // JPEG_ENABLE_SSE2
+#endif // MANGO_ENABLE_SSE2
 
-#if defined(JPEG_ENABLE_SSE4)
+#if defined(MANGO_ENABLE_SSE4_1)
 
         if (flags & INTEL_SSSE3)
         {
@@ -1629,7 +1628,7 @@ namespace jpeg {
             }
         }
 
-#endif // JPEG_ENABLE_SSE4
+#endif // MANGO_ENABLE_SSE4_1
 
         std::string id;
 
@@ -1638,12 +1637,12 @@ namespace jpeg {
         {
             case 1:
                 processState.process = processState.process_y;
-                id = "Y";
+                id = "Color: Y";
                 break;
 
             case 3:
                 processState.process = processState.process_ycbcr;
-                id = "YCbCr";
+                id = "Color: YCbCr";
 
                 // detect optimized cases
                 if (blocks_in_mcu <= 6)
@@ -1653,7 +1652,7 @@ namespace jpeg {
                         if (processState.process_ycbcr_8x8)
                         {
                             processState.process = processState.process_ycbcr_8x8;
-                            id = makeString("%s YCbCr 8x8", simd);
+                            id = makeString("Color: %s YCbCr 8x8", simd);
                         }
                     }
 
@@ -1662,7 +1661,7 @@ namespace jpeg {
                         if (processState.process_ycbcr_8x16)
                         {
                             processState.process = processState.process_ycbcr_8x16;
-                            id = makeString("%s YCbCr 8x16", simd);
+                            id = makeString("Color: %s YCbCr 8x16", simd);
                         }
                     }
 
@@ -1671,7 +1670,7 @@ namespace jpeg {
                         if (processState.process_ycbcr_16x8)
                         {
                             processState.process = processState.process_ycbcr_16x8;
-                            id = makeString("%s YCbCr 16x8", simd);
+                            id = makeString("Color: %s YCbCr 16x8", simd);
                         }
                     }
 
@@ -1680,7 +1679,7 @@ namespace jpeg {
                         if (processState.process_ycbcr_16x16)
                         {
                             processState.process = processState.process_ycbcr_16x16;
-                            id = makeString("%s YCbCr 16x16", simd);
+                            id = makeString("Color: %s YCbCr 16x16", simd);
                         }
                     }
                 }
@@ -1688,7 +1687,7 @@ namespace jpeg {
 
             case 4:
                 processState.process = processState.process_cmyk;
-                id = "CMYK";
+                id = "Color: CMYK";
                 break;
         }
 
@@ -1696,7 +1695,7 @@ namespace jpeg {
         debugPrint("  Decoder: %s\n", id.c_str());
     }
 
-    ImageDecodeStatus Parser::decode(const Surface& target)
+    ImageDecodeStatus Parser::decode(const Surface& target, const ImageDecodeOptions& options)
     {
         ImageDecodeStatus status;
 
@@ -1718,7 +1717,10 @@ namespace jpeg {
         SampleFormat sf = getSampleFormat(target.format);
 
         // configure innerloops based on CPU caps
-        configureCPU(sf.sample);
+        configureCPU(sf.sample, options);
+
+        // configure multithreading
+        m_hardware_concurrency = options.multithread ? ThreadPool::getHardwareConcurrency() : 1;
 
         if (is_lossless)
         {
@@ -1761,7 +1763,7 @@ namespace jpeg {
         if (!status.direct)
         {
             // create a temporary decoding target
-            temp.reset(new Bitmap(width, height, sf.format));
+            temp = std::make_unique<Bitmap>(width, height, sf.format);
             m_surface = temp.get();
         }
 
@@ -1818,7 +1820,8 @@ namespace jpeg {
 
     int Parser::getTaskSize(int tasks) const
     {
-        const int threads = m_hardware_concurrency;
+        constexpr int max_threads = 64;
+        const int threads = std::min(m_hardware_concurrency, max_threads);
         const int tasks_per_thread = threads > 1 ? std::max(tasks / threads, 1) : 0;
         //printf("Scheduling %d tasks in %d threads (%d tasks/thread)\n", tasks, threads, tasks_per_thread);
         return tasks_per_thread;
@@ -1826,6 +1829,9 @@ namespace jpeg {
 
     void Parser::decodeLossless()
     {
+        // NOTE: need more test files to make this more conformant
+        // NOTE: color sub-sampling is not supported (need test files)
+
         int predictor = decodeState.spectralStart;
         int pointTransform = decodeState.successiveLow;
 
@@ -1834,13 +1840,8 @@ namespace jpeg {
 
         if (is_arithmetic)
         {
-#ifdef MANGO_ENABLE_LICENSE_BSD
             decodeFunction = arith_decode_mcu_lossless;
             previousDC = decodeState.arithmetic.last_dc_value;
-#else
-            // We don't have a license for arithmetic decoder
-            return;
-#endif
         }
 
         const int width = m_surface->width;
@@ -1857,6 +1858,8 @@ namespace jpeg {
             scanLineCache[i] = std::vector<int>(width + 1, 0);
         }
 
+        bool first = true;
+
         for (int y = 0; y < height; ++y)
         {
             u8* image = m_surface->address<u8>(0, y);
@@ -1867,44 +1870,43 @@ namespace jpeg {
 
                 decodeFunction(data, &decodeState);
                 bool restarted = handleRestart();
+                bool init = restarted | first;
+                first = false;
 
                 for (int currentComponent = 0; currentComponent < components; ++currentComponent)
                 {
-                    // Predictors
+                    // predictors
                     int* cache = scanLineCache[currentComponent].data();
-                    int Ra = data[currentComponent];
-                    int Rb = cache[x + 1];
-                    int Rc = cache[x + 0];
+                    int a = data[currentComponent];
+                    int b = cache[x + 1];
+                    int c = cache[x + 0];
 
-                    int Px;
+                    int s;
 
-                    // NOTE: need more test files to make this more conformant
-                    // NOTE: color sub-sampling is not supported (need test files)
-
-                    if ((x == 0 && y == 0) || restarted)
-                        Px = initPredictor;
+                    if (init)
+                        s = initPredictor;
                     else if (predictor == 0) 
-                        Px = 0;
+                        s = 0;
                     else if (x == xlast)
-                        Px = cache[0];
+                        s = cache[0];
                     else if (predictor == 1 || y == 0 || restarted)
-                        Px = Ra;
+                        s = a;
                     else if (predictor == 2)
-                        Px = Rb;
+                        s = b;
                     else if (predictor == 3)
-                        Px = Rc;
+                        s = c;
                     else if (predictor == 4)
-                        Px = Ra + Rb - Rc;
+                        s = a + b - c;
                     else if (predictor == 5)
-                        Px = Ra + ((Rb - Rc) >> 1);
+                        s = a + ((b - c) >> 1);
                     else if (predictor == 6)
-                        Px = Rb + ((Ra - Rc) >> 1);
+                        s = b + ((a - c) >> 1);
                     else if (predictor == 7)
-                        Px = (Ra + Rb) >> 1;
+                        s = (a + b) >> 1;
                     else
-                        Px = 0;
+                        s = 0;
 
-                    previousDC[currentComponent] = Px;
+                    previousDC[currentComponent] = s;
 
                     cache[x] = data[currentComponent];
                     data[currentComponent] = data[currentComponent] >> (precision - 8);
@@ -1953,6 +1955,9 @@ namespace jpeg {
 
         const int xmcu_last = xmcu - 1;
         const int ymcu_last = ymcu - 1;
+
+        const int xclip = xsize % xblock;
+        const int yclip = ysize % yblock;
         const int xblock_last = xclip ? xclip : xblock;
         const int yblock_last = yclip ? yclip : yblock;
 
@@ -2045,12 +2050,13 @@ namespace jpeg {
                     DecodeState state = decodeState;
                     state.buffer.ptr = p;
 
-                    ProcessFunc process = processState.process;
-
                     const int left = std::min(restartInterval, mcus - i);
 
                     const int xmcu_last = xmcu - 1;
                     const int ymcu_last = ymcu - 1;
+
+                    const int xclip = xsize % xblock;
+                    const int yclip = ysize % yblock;
                     const int xblock_last = xclip ? xclip : xblock;
                     const int yblock_last = yclip ? yclip : yblock;
 
@@ -2062,20 +2068,12 @@ namespace jpeg {
 
                         int x = n % xmcu;
                         int y = n / xmcu;
-
                         u8* dest = image + y * ystride + x * xstride;
 
                         int width = x == xmcu_last ? xblock_last : xblock;
                         int height = y == ymcu_last ? yblock_last : yblock;
 
-                        if (width != xblock || height != yblock)
-                        {
-                            process_and_clip(dest, stride, data, width, height);
-                        }
-                        else
-                        {
-                            process(dest, stride, data, &processState, width, height);
-                        }
+                        process_and_clip(dest, stride, data, width, height);
                     }
                 });
 
@@ -2313,11 +2311,6 @@ namespace jpeg {
 
     void Parser::process_range(int y0, int y1, const s16* data)
     {
-        const int xmcu_last = xmcu - 1;
-        const int ymcu_last = ymcu - 1;
-        const int xblock_last = xclip ? xclip : xblock;
-        const int yblock_last = yclip ? yclip : yblock;
-
         const size_t stride = m_surface->stride;
         const size_t bytes_per_pixel = m_surface->format.bytes();
         const size_t xstride = bytes_per_pixel * xblock;
@@ -2327,40 +2320,30 @@ namespace jpeg {
 
         const int mcu_data_size = blocks_in_mcu * 64;
 
-        ProcessFunc process = processState.process;
+        const int xmcu_last = xmcu - 1;
+        const int ymcu_last = ymcu - 1;
+
+        const int xclip = xsize % xblock;
+        const int yclip = ysize % yblock;
+        const int xblock_last = xclip ? xclip : xblock;
+        const int yblock_last = yclip ? yclip : yblock;
 
         for (int y = y0; y < y1; ++y)
         {
             u8* dest = image + y * ystride;
+            int height = y == ymcu_last ? yblock_last : yblock;
 
-            if (y == ymcu_last)
+            for (int x = 0; x < xmcu_last; ++x)
             {
-                for (int x = 0; x < xmcu_last; ++x)
-                {
-                    process_and_clip(dest, stride, data, xblock, yblock_last);
-                    data += mcu_data_size;
-                    dest += xstride;
-                }
-
-                // last column
-                process_and_clip(dest, stride, data, xblock_last, yblock_last);
+                process_and_clip(dest, stride, data, xblock, height);
                 data += mcu_data_size;
                 dest += xstride;
             }
-            else
-            {
-                for (int x = 0; x < xmcu_last; ++x)
-                {
-                    process(dest, stride, data, &processState, xblock, yblock);
-                    data += mcu_data_size;
-                    dest += xstride;
-                }
 
-                // last column
-                process_and_clip(dest, stride, data, xblock_last, yblock);
-                data += mcu_data_size;
-                dest += xstride;
-            }
+            // last column
+            process_and_clip(dest, stride, data, xblock_last, height);
+            data += mcu_data_size;
+            dest += xstride;
         }
     }
 
@@ -2391,5 +2374,4 @@ namespace jpeg {
         }
     }
 
-} // namespace jpeg
-} // namespace mango
+} // namespace mango::jpeg

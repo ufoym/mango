@@ -1,6 +1,6 @@
 /*
     MANGO Multimedia Development Platform
-    Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
+    Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <vector>
 #include <algorithm>
@@ -15,6 +15,7 @@
 namespace
 {
     using namespace mango;
+    using namespace mango::image;
 
     // ----------------------------------------------------------------------------
     // clear
@@ -79,81 +80,47 @@ namespace
     }
 
     // ----------------------------------------------------------------------------
-    // load_surface()
+    // create_surface()
     // ----------------------------------------------------------------------------
 
-    void load_surface(Surface& surface, ConstMemory memory, const std::string& extension, const Format* ptr_format)
+    Surface create_surface(ConstMemory memory, const std::string& extension, const Format* format, const ImageDecodeOptions& options)
     {
+        Surface surface;
+
         ImageDecoder decoder(memory, extension);
         if (decoder.isDecoder())
         {
             ImageHeader header = decoder.header();
 
-            Format format = ptr_format ? *ptr_format : header.format;
-            size_t stride = header.width * format.bytes();
-            size_t bytes = stride * header.height;
+            surface.format = format ? *format : header.format;
 
-            // configure surface
+            if (options.palette)
+            {
+                // the decoder will set palette if present
+                options.palette->size = 0;
+
+                if (header.palette)
+                {
+                    surface.format = IndexedFormat(8);
+                }
+            }
+
             surface.width  = header.width;
             surface.height = header.height;
-            surface.format = format;
-            surface.stride = stride;
-            surface.image  = new u8[bytes];
+            surface.stride = header.width * surface.format.bytes();
+            surface.image  = new u8[header.height * surface.stride];
 
             // decode
-            ImageDecodeStatus status = decoder.decode(surface);
+            ImageDecodeStatus status = decoder.decode(surface, options, 0, 0, 0);
             MANGO_UNREFERENCED(status);
         }
-    }
 
-    void load_surface(Surface& surface, const std::string& filename, const Format* format)
-    {
-        filesystem::File file(filename);
-        load_surface(surface, file, filesystem::getExtension(filename), format);
-    }
-
-    void load_palette_surface(Surface& surface, ConstMemory memory, const std::string& extension, Palette& palette)
-    {
-        palette.size = 0;
-
-        ImageDecoder decoder(memory, extension);
-        if (decoder.isDecoder())
-        {
-            ImageHeader header = decoder.header();
-            if (header.palette)
-            {
-                size_t stride = header.width;
-                size_t bytes = header.height * stride;
-
-                // configure surface
-                surface.width  = header.width;
-                surface.height = header.height;
-                surface.format = IndexedFormat(8);
-                surface.stride = stride;
-                surface.image  = new u8[bytes];
-
-                // decode
-                ImageDecodeOptions options;
-                options.palette = &palette;
-                decoder.decode(surface, options, 0, 0, 0);
-            }
-            else
-            {
-                // fallback: client requests a palette but image doesn't have one
-                load_surface(surface, memory, extension, nullptr);
-            }
-        }
-    }
-
-    void load_palette_surface(Surface& surface, const std::string& filename, Palette& palette)
-    {
-        filesystem::File file(filename);
-        load_palette_surface(surface, file, filesystem::getExtension(filename), palette);
+        return surface;
     }
 
 } // namespace
 
-namespace mango
+namespace mango::image
 {
 
     // ----------------------------------------------------------------------------
@@ -203,9 +170,18 @@ namespace mango
             y = 0;
         }
 
-        image  = surface.address(x, y);
-        width  = std::max(0, std::min(surface.width, x + w) - x);
-        height = std::max(0, std::min(surface.height, y + h) - y);
+        if (x >= surface.width || y >= surface.height)
+        {
+            image = nullptr;
+            width = 0;
+            height = 0;
+        }
+        else
+        {
+            image  = surface.address(x, y);
+            width  = std::max(0, std::min(surface.width, x + w) - x);
+            height = std::max(0, std::min(surface.height, y + h) - y);
+        }
     }
 
     Surface::~Surface()
@@ -227,7 +203,7 @@ namespace mango
         ImageEncoder encoder(filename);
         if (encoder.isEncoder())
         {
-            filesystem::FileStream file(filename, Stream::WRITE);
+            filesystem::OutputFileStream file(filename);
             encoder.encode(file, *this, options);
         }
     }
@@ -293,7 +269,7 @@ namespace mango
         }
     }
 
-    void Surface::clear(ColorRGBA color) const
+    void Surface::clear(Color color) const
     {
         const float s = 1.0f / 255.0f;
         clear(color.r * s, color.g * s, color.b * s, color.a * s);
@@ -311,27 +287,27 @@ namespace mango
 
         BlitRect rect;
 
-        rect.src.address = source.image;
-        rect.src.stride = source.stride;
-        rect.dest.address = dest.image;
-        rect.dest.stride = dest.stride;
         rect.width = dest.width;
         rect.height = dest.height;
+        rect.src_address = source.image;
+        rect.src_stride = source.stride;
+        rect.dest_address = dest.image;
+        rect.dest_stride = dest.stride;
 
         if (x < 0)
         {
-            rect.src.address -= x * source.format.bytes();
+            rect.src_address -= x * source.format.bytes();
         }
 
         if (y < 0)
         {
-            rect.src.address -= y * source.stride;
+            rect.src_address -= y * source.stride;
         }
 
         Blitter blitter(dest.format, source.format);
 
-#if 0
-        const int slice = 96;
+#if 1
+        const int slice = 128;
 
         if (ThreadPool::getHardwareConcurrency() > 2 && rect.height >= slice * 2)
         {
@@ -346,8 +322,8 @@ namespace mango
 
                     BlitRect temp = rect;
 
-                    temp.dest.address += y0 * rect.dest.stride;
-                    temp.src.address += y0 * rect.src.stride;
+                    temp.dest_address += y0 * rect.dest_stride;
+                    temp.src_address += y0 * rect.src_stride;
                     temp.height = y1 - y0;
 
                     blitter.convert(temp);
@@ -379,7 +355,7 @@ namespace mango
 
             for (int x = 0; x < half_width; ++x)
             {
-                // swap pixels using the slowest possible method
+                // swap pixels
                 for (int i = 0; i < bytes_per_pixel; ++i)
                 {
                     std::swap(a[i], b[i]);
@@ -449,40 +425,29 @@ namespace mango
         blit(0, 0, source);
     }
 
-    Bitmap::Bitmap(ConstMemory memory, const std::string& extension)
+    Bitmap::Bitmap(ConstMemory memory, const std::string& extension, const ImageDecodeOptions& options)
+        : Surface(create_surface(memory, extension, nullptr, options))
     {
-        load_surface(*this, memory, extension, nullptr);
     }
 
-    Bitmap::Bitmap(ConstMemory memory, const std::string& extension, const Format& format)
+    Bitmap::Bitmap(ConstMemory memory, const std::string& extension, const Format& format, const ImageDecodeOptions& options)
+        : Surface(create_surface(memory, extension, &format, options))
     {
-        load_surface(*this, memory, extension, &format);
     }
 
-    Bitmap::Bitmap(const std::string& filename)
+    Bitmap::Bitmap(const std::string& filename, const ImageDecodeOptions& options)
+        : Surface(create_surface(filesystem::File(filename), filesystem::getExtension(filename), nullptr, options))
     {
-        load_surface(*this, filename, nullptr);
     }
 
-    Bitmap::Bitmap(const std::string& filename, const Format& format)
+    Bitmap::Bitmap(const std::string& filename, const Format& format, const ImageDecodeOptions& options)
+        : Surface(create_surface(filesystem::File(filename), filesystem::getExtension(filename), &format, options))
     {
-        load_surface(*this, filename, &format);
-    }
-
-    Bitmap::Bitmap(ConstMemory memory, const std::string& extension, Palette& palette)
-    {
-        load_palette_surface(*this, memory, extension, palette);
-    }
-
-    Bitmap::Bitmap(const std::string& filename, Palette& palette)
-    {
-        load_palette_surface(*this, filename, palette);
     }
 
     Bitmap::Bitmap(Bitmap&& bitmap)
         : Surface(bitmap)
     {
-        // move image ownership
         bitmap.image = nullptr;
     }
 
@@ -506,4 +471,4 @@ namespace mango
         return *this;
     }
 
-} // namespace mango
+} // namespace mango::image
