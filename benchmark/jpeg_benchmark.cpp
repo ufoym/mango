@@ -270,7 +270,27 @@ int main(int argc, const char* argv[])
     ImageDecodeOptions decode_options;
     decode_options.simd = simd;
     decode_options.multithread = multithread;
-    Bitmap bitmap(filename, decode_options);
+
+    Surface bitmap;
+    filesystem::File file(filename);
+    const ConstMemory memory = file;
+    const std::string& extension = filesystem::getExtension(filename);
+    ImageDecoder decoder(memory, extension);
+    if (decoder.isDecoder()) {
+        ImageHeader header = decoder.header();
+        bitmap.format = header.format;
+        if (decode_options.palette) {
+            decode_options.palette->size = 0;
+            if (header.palette)
+                bitmap.format = IndexedFormat(8);
+        }
+        bitmap.width  = header.width;
+        bitmap.height = header.height;
+        bitmap.stride = header.width * bitmap.format.bytes();
+        bitmap.image  = new u8[header.height * bitmap.stride];
+        ImageDecodeStatus status = decoder.decode(bitmap, decode_options, 0, 0, 0);
+        MANGO_UNREFERENCED(status);
+    }
 
     time1 = Time::us();
 
