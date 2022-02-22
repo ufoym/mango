@@ -133,72 +133,6 @@ SOURCE_GROUP("jpeg" FILES ${JPEG})
 SOURCE_GROUP("math" FILES ${MATH})
 SOURCE_GROUP("simd" FILES ${SIMD})
 
-FILE(GLOB EXTERNAL_LZMA
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/lzma/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/lzma/*.c")
-FILE(GLOB EXTERNAL_AES
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/aes/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/aes/*.cpp")
-FILE(GLOB EXTERNAL_BC
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/bc/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/bc/*.cpp")
-FILE(GLOB EXTERNAL_BZIP2
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/bzip2/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/bzip2/*.c")
-FILE(GLOB EXTERNAL_CONCURRENT_QUEUE
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/concurrentqueue/*.h")
-FILE(GLOB EXTERNAL_GOOGLE
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/google/*.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/google/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/google/*.h")
-FILE(GLOB EXTERNAL_LZ4
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/lz4/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/lz4/*.c")
-FILE(GLOB EXTERNAL_LZFSE
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/lzfse/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/lzfse/*.c")
-FILE(GLOB EXTERNAL_LZO
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/lzo/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/lzo/*.c")
-FILE(GLOB EXTERNAL_DEFLATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libdeflate/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libdeflate/common/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libdeflate/lib/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libdeflate/lib/*.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libdeflate/lib/x86/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libdeflate/lib/x86/*.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libdeflate/lib/arm/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libdeflate/lib/arm/*.c")
-FILE(GLOB EXTERNAL_UNRAR
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/unrar/*.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/unrar/*.cpp")
-FILE(GLOB_RECURSE EXTERNAL_ZSTD
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/zstd/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/zstd/*.c")
-FILE(GLOB_RECURSE EXTERNAL_WEBP
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libwebp/src/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/libwebp/src/*.c")
-FILE(GLOB EXTERNAL_ZPNG
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/zpng/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/external/zpng/*.cpp")
-
-SOURCE_GROUP("external" FILES
-    ${EXTERNAL_LZMA}
-    ${EXTERNAL_AES}
-    ${EXTERNAL_BC}
-    ${EXTERNAL_BZIP2}
-    ${EXTERNAL_CONCURRENT_QUEUE}
-    ${EXTERNAL_GOOGLE}
-    ${EXTERNAL_LZ4}
-    ${EXTERNAL_LZFSE}
-    ${EXTERNAL_LZO}
-    ${EXTERNAL_DEFLATE}
-    ${EXTERNAL_UNRAR}
-    ${EXTERNAL_ZSTD}
-    ${EXTERNAL_WEBP}
-    ${EXTERNAL_ZPNG}
-)
-
 # ------------------------------------------------------------------------------
 # libraries
 # ------------------------------------------------------------------------------
@@ -213,20 +147,6 @@ ADD_LIBRARY(mango
     ${JPEG}
     ${MATH}
     ${SIMD}
-    ${EXTERNAL_LZMA}
-    ${EXTERNAL_AES}
-    ${EXTERNAL_BC}
-    ${EXTERNAL_BZIP2}
-    ${EXTERNAL_CONCURRENT_QUEUE}
-    ${EXTERNAL_GOOGLE}
-    ${EXTERNAL_LZ4}
-    ${EXTERNAL_LZFSE}
-    ${EXTERNAL_LZO}
-    ${EXTERNAL_DEFLATE}
-    ${EXTERNAL_UNRAR}
-    ${EXTERNAL_ZSTD}
-    ${EXTERNAL_WEBP}
-    ${EXTERNAL_ZPNG}
 )
 
 

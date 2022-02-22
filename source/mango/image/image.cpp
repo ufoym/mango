@@ -14,25 +14,7 @@ namespace mango::image
     // ImageServer
     // ----------------------------------------------------------------------------
 
-    void registerImageDecoderTGA();
-    void registerImageDecoderPKM();
-    void registerImageDecoderDDS();
-    void registerImageDecoderPNG();
     void registerImageDecoderJPG();
-    void registerImageDecoderBMP();
-    void registerImageDecoderPCX();
-    void registerImageDecoderIFF();
-    void registerImageDecoderHDR();
-    void registerImageDecoderGIF();
-    void registerImageDecoderKTX();
-    void registerImageDecoderPVR();
-    void registerImageDecoderASTC();
-    void registerImageDecoderZPNG();
-    void registerImageDecoderSGI();
-    void registerImageDecoderPNM();
-    void registerImageDecoderATARI();
-    void registerImageDecoderC64();
-    void registerImageDecoderWEBP();
 
     class ImageServer
     {
@@ -43,25 +25,7 @@ namespace mango::image
     public:
         ImageServer()
         {
-            registerImageDecoderTGA();
-            registerImageDecoderPKM();
-            registerImageDecoderDDS();
-            registerImageDecoderPNG();
             registerImageDecoderJPG();
-            registerImageDecoderBMP();
-            registerImageDecoderPCX();
-            registerImageDecoderIFF();
-            registerImageDecoderHDR();
-            registerImageDecoderGIF();
-            registerImageDecoderKTX();
-            registerImageDecoderPVR();
-            registerImageDecoderASTC();
-            registerImageDecoderZPNG();
-            registerImageDecoderSGI();
-            registerImageDecoderPNM();
-            registerImageDecoderATARI();
-            registerImageDecoderC64();
-            registerImageDecoderWEBP();
         }
 
         ~ImageServer()
