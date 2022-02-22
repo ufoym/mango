@@ -375,7 +375,7 @@ else ()
         endif ()
     endif ()
 endif ()
-add_subdirectory(example)
+add_subdirectory(benchmark)
 
 # ------------------------------------------------------------------------------
 # install
