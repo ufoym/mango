@@ -207,24 +207,8 @@ int main(int argc, const char* argv[])
     const char* filename = argv[1];
     warmup(filename);
 
-    int test_count = 0;
+    bool simd = true;
     bool multithread = true;
-
-    for (int i = 2; i < argc; ++i)
-    {
-        if (!strcmp(argv[i], "--nomt"))
-        {
-            multithread = false;
-        }
-        else if (!strcmp(argv[i], "--debug"))
-        {
-            debugPrintEnable(true);
-        }
-        else
-        {
-            test_count = std::atoi(argv[i]);
-        }
-    }
 
     printf("----------------------------------------------\n");
     printf("                load         save             \n");
@@ -284,7 +268,7 @@ int main(int argc, const char* argv[])
     time0 = Time::us();
 
     ImageDecodeOptions decode_options;
-    decode_options.simd = true;
+    decode_options.simd = simd;
     decode_options.multithread = multithread;
     Bitmap bitmap(filename, decode_options);
 
@@ -292,45 +276,10 @@ int main(int argc, const char* argv[])
 
     ImageEncodeOptions encode_options;
     encode_options.quality = 0.70f;
-    encode_options.simd = true;
+    encode_options.simd = simd;
     encode_options.multithread = multithread;
     bitmap.save("output-mango.jpg", encode_options);
 
     time2 = Time::us();
     print("mango:   ", time1 - time0, time2 - time1);
-
-    // ------------------------------------------------------------------
-
-    if (test_count > 0)
-    {
-        u64 load_total = time1 - time0;
-        u64 save_total = time2 - time1;
-        u64 load_lowest = load_total;
-        u64 save_lowest = save_total;
-
-        for (int i = 0; i < test_count; ++i)
-        {
-            time0 = Time::us();
-            Bitmap bitmap(filename, decode_options);
-
-            time1 = Time::us();
-            bitmap.save("output-mango.jpg", encode_options);
-
-            time2 = Time::us();
-
-            u64 load = time1 - time0;
-            u64 save = time2 - time1;
-            load_total += load;
-            save_total += save;
-            load_lowest = std::min(load_lowest, load);
-            save_lowest = std::min(save_lowest, save);
-            print("         ", load, save);
-        }
-
-        printf("----------------------------------------------\n");
-        print("average: ", load_total / (test_count + 1), save_total / (test_count + 1));
-        print("lowest : ", load_lowest, save_lowest);
-        printf("----------------------------------------------\n");
-    }
-
 }
