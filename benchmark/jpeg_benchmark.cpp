@@ -5,28 +5,11 @@
 #include <mango/mango.hpp>
 
 using namespace mango;
-using namespace mango::filesystem;
 using namespace mango::image;
 
 #define TEST_LIBJPEG
 #define TEST_STB
 #define TEST_JPEG_COMPRESSOR
-
-// ----------------------------------------------------------------------
-// warmup()
-// ----------------------------------------------------------------------
-
-void warmup(const char* filename)
-{
-    File file(filename);
-    ConstMemory memory = file;
-    std::vector<char> buffer(memory.size);
-    std::memcpy(buffer.data(), memory.address, memory.size);
-
-    ImageDecoder decoder(memory, filename);
-    ImageHeader header = decoder.header();
-    printf("image: %d x %d (%zu KB)\n", header.width, header.height, memory.size / 1024);
-}
 
 // ----------------------------------------------------------------------
 // libjpeg
@@ -205,7 +188,6 @@ int main(int argc, const char* argv[])
     printf("%s\n", getSystemInfo().c_str());
 
     const char* filename = argv[1];
-    warmup(filename);
 
     bool simd = true;
     bool multithread = true;
@@ -273,7 +255,7 @@ int main(int argc, const char* argv[])
 
     Surface bitmap;
     filesystem::File file(filename);
-    const ConstMemory memory = file;
+    ConstMemory memory = file;
     const std::string& extension = filesystem::getExtension(filename);
     ImageDecoder decoder(memory, extension);
     if (decoder.isDecoder()) {
