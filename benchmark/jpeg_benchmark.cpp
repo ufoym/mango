@@ -38,15 +38,6 @@ ConstMemory read(const char * filename) {
     return memory;
 }
 
-std::string getExtension(const std::string& filename)
-{
-    size_t n = filename.find_last_of('.');
-    std::string s;
-    if (n != std::string::npos)
-        s = filename.substr(n);
-    return s;
-}
-
 // ----------------------------------------------------------------------
 // libjpeg
 // ----------------------------------------------------------------------
@@ -291,9 +282,8 @@ int main(int argc, const char* argv[])
 
     Surface bitmap;
 
-    const std::string& extension = getExtension(filename);
     ConstMemory memory = read(filename);
-    ImageDecoder decoder(memory, extension);
+    ImageDecoder decoder(memory, filename);
     if (decoder.isDecoder()) {
         ImageHeader header = decoder.header();
         bitmap.format = header.format;
