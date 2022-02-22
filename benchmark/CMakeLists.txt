@@ -52,6 +52,5 @@ add_executable(benchmark
     jpeg_benchmark.cpp
     jpeg-compressor/jpgd.cpp
     jpeg-compressor/jpge.cpp
-    jpegdec/JPEGDEC.cpp
 )
 target_link_libraries(benchmark jpeg)

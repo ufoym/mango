@@ -11,7 +11,6 @@ using namespace mango::image;
 #define TEST_LIBJPEG
 #define TEST_STB
 #define TEST_JPEG_COMPRESSOR
-//#define TEST_JPEGDEC
 
 // ----------------------------------------------------------------------
 // warmup()
@@ -180,66 +179,6 @@ void jpge_save(const char* filename, const Surface& surface)
 #endif
 
 // ----------------------------------------------------------------------
-// jpegdec
-// ----------------------------------------------------------------------
-
-#ifdef TEST_JPEGDEC
-
-#include "jpegdec/JPEGDEC.h"
-
-Bitmap* jpegdec_bitmap = nullptr;
-
-int jpegdec_draw(JPEGDRAW *draw)
-{
-    u16* src = draw->pPixels;
-    u8* dest = jpegdec_bitmap->address(draw->x, draw->y);
-    size_t stride = jpegdec_bitmap->stride;
-
-    for (int y = 0; y < draw->iHeight; ++y)
-    {
-        std::memcpy(dest, src, draw->iWidth * 2);
-        src += draw->iWidth;
-        dest += stride;
-    }
-
-    return 1;
-}
-
-Surface jpegdec_load(const char* filename)
-{
-    File file(filename);
-
-    JPEGDEC decoder;
-
-    if (!decoder.openRAM(const_cast<u8*>(file.data()), int(file.size()), jpegdec_draw))
-    {
-        printf("JPEGDEC::openRAM() failed.\n");
-        return Surface();
-    }
-
-    int width = decoder.getWidth();
-    int height = decoder.getHeight();
-    Bitmap bitmap(width, height, Format(16, Format::UNORM, Format::BGR, 5, 6, 5, 0));
-
-    jpegdec_bitmap = &bitmap;
-
-    if (!decoder.decode(0, 0, 0))
-    {
-        printf("JPEGDEC::decode() failed.\n");
-        return Surface();
-    }
-
-    return Surface();
-}
-
-void jpegdec_save(const char* filename, const Surface& surface)
-{
-    // NOT SUPPORTED
-}
-
-#endif
-
-// ----------------------------------------------------------------------
 // print
 // ----------------------------------------------------------------------
 
@@ -337,21 +276,6 @@ int main(int argc, const char* argv[])
 
     time2 = Time::us();
     print("jpgd:    ", time1 - time0, time2 - time1);
-
-#endif
-
-    // ------------------------------------------------------------------
-
-#ifdef TEST_JPEGDEC
-
-    time0 = Time::us();
-    Surface s_jpegdec = jpegdec_load(filename);
-
-    time1 = Time::us();
-    jpegdec_save("output-jpegdec.jpg", s_jpegdec);
-
-    time2 = Time::us();
-    print("jpgdec:  ", time1 - time0, time2 - time1);
 
 #endif
 
