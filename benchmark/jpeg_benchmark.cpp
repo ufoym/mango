@@ -16,36 +16,25 @@ using namespace mango::image;
 // util
 // ----------------------------------------------------------------------
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
+#include <fstream>
 
 ConstMemory read(const char * filename) {
     ConstMemory memory;
-    int m_file = open(filename, O_RDONLY);
-    if (m_file != -1) {
-        struct stat sb;
-        if (::fstat(m_file, &sb) == -1) {
-            ::close(m_file);
-            m_file = -1;
-            MANGO_EXCEPTION("[mapper.file] Cannot fstat \"%s\".", filename);
-        }
-        else {
-            const size_t file_size = size_t(sb.st_size);
-            if (file_size > 0) {
-                void* m_address = ::mmap(nullptr, file_size, PROT_READ, MAP_FILE | MAP_SHARED, m_file, 0);
-                if (m_address == MAP_FAILED)
-                    MANGO_EXCEPTION("[mapper.file] Memory mapping \"%s\" failed.", filename);
-                memory.size = file_size;
-                memory.address = reinterpret_cast<u8*>(m_address);
-            }
-            else {
-                memory.size = 0;
-                memory.address = nullptr;
-            }
-        }
-    }
+
+    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+        printf("error opening the input file\n");
+
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    char * buffer = new char[size];
+    if (!file.read(buffer, size))
+        printf("error reading the input file\n");
+    file.close();
+
+    memory.size = size;
+    memory.address = reinterpret_cast<u8*>(buffer);
     return memory;
 }
 
