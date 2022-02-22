@@ -11,6 +11,53 @@ using namespace mango::image;
 #define TEST_STB
 #define TEST_JPEG_COMPRESSOR
 
+
+// ----------------------------------------------------------------------
+// util
+// ----------------------------------------------------------------------
+
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+
+ConstMemory read(const char * filename) {
+    ConstMemory memory;
+    int m_file = open(filename, O_RDONLY);
+    if (m_file != -1) {
+        struct stat sb;
+        if (::fstat(m_file, &sb) == -1) {
+            ::close(m_file);
+            m_file = -1;
+            MANGO_EXCEPTION("[mapper.file] Cannot fstat \"%s\".", filename);
+        }
+        else {
+            const size_t file_size = size_t(sb.st_size);
+            if (file_size > 0) {
+                void* m_address = ::mmap(nullptr, file_size, PROT_READ, MAP_FILE | MAP_SHARED, m_file, 0);
+                if (m_address == MAP_FAILED)
+                    MANGO_EXCEPTION("[mapper.file] Memory mapping \"%s\" failed.", filename);
+                memory.size = file_size;
+                memory.address = reinterpret_cast<u8*>(m_address);
+            }
+            else {
+                memory.size = 0;
+                memory.address = nullptr;
+            }
+        }
+    }
+    return memory;
+}
+
+std::string getExtension(const std::string& filename)
+{
+    size_t n = filename.find_last_of('.');
+    std::string s;
+    if (n != std::string::npos)
+        s = filename.substr(n);
+    return s;
+}
+
 // ----------------------------------------------------------------------
 // libjpeg
 // ----------------------------------------------------------------------
@@ -254,9 +301,9 @@ int main(int argc, const char* argv[])
     decode_options.multithread = multithread;
 
     Surface bitmap;
-    filesystem::File file(filename);
-    ConstMemory memory = file;
-    const std::string& extension = filesystem::getExtension(filename);
+
+    const std::string& extension = getExtension(filename);
+    ConstMemory memory = read(filename);
     ImageDecoder decoder(memory, extension);
     if (decoder.isDecoder()) {
         ImageHeader header = decoder.header();
