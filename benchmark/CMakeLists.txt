@@ -1,8 +1,5 @@
 project(benchmark)
 
-# build options
-option(BUILD_OPENGL      "Enables build of OpenGL examples"      OFF)
-
 add_compile_options(-Wall -O3 -g)
 
 set(CMAKE_CXX_STANDARD 17)

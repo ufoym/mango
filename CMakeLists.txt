@@ -74,7 +74,6 @@ OPTION(ENABLE_FMA           "Enable FMA"                                OFF)
 # ------------------------------------------------------------------------------
 
 include_directories("include/")
-include_directories("source/external/libwebp/")
 
 # ------------------------------------------------------------------------------
 # source directories
@@ -90,13 +89,6 @@ if (WIN32)
         "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/filesystem/*.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/filesystem/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/filesystem/win32/*.cpp")
-    FILE(GLOB WINDOW
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/window/win32/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/window/win32/*.cpp")
-    FILE(GLOB OPENGL
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/opengl/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/opengl/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/opengl/wgl/*.cpp")
 
 elseif (APPLE)
 
@@ -108,13 +100,6 @@ elseif (APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/filesystem/*.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/filesystem/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/filesystem/unix/*.cpp")
-    FILE(GLOB WINDOW
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/window/cocoa/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/window/cocoa/*.mm")
-    FILE(GLOB OPENGL
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/opengl/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/opengl/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/opengl/cocoa/*.mm")
 
 else()
 
@@ -126,13 +111,6 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/filesystem/*.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/filesystem/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/filesystem/unix/*.cpp")
-    FILE(GLOB WINDOW
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/window/xlib/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/window/xlib/*.cpp")
-    FILE(GLOB OPENGL
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/opengl/*.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/opengl/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/opengl/glx/*.cpp")
 
 endif()
 
@@ -154,8 +132,6 @@ SOURCE_GROUP("image" FILES ${IMAGE})
 SOURCE_GROUP("jpeg" FILES ${JPEG})
 SOURCE_GROUP("math" FILES ${MATH})
 SOURCE_GROUP("simd" FILES ${SIMD})
-SOURCE_GROUP("window" FILES ${WINDOW})
-SOURCE_GROUP("opengl" FILES ${OPENGL})
 
 FILE(GLOB EXTERNAL_LZMA
     "${CMAKE_CURRENT_SOURCE_DIR}/source/external/lzma/*.h"
@@ -253,20 +229,9 @@ ADD_LIBRARY(mango
     ${EXTERNAL_ZPNG}
 )
 
-ADD_LIBRARY(mango-opengl
-    ${WINDOW}
-    ${OPENGL}
-)
-
-target_link_libraries(mango-opengl PUBLIC mango)
 
 if (APPLE)
-    if (BUILD_SHARED_LIBS)
-        target_link_libraries(mango-opengl PUBLIC "-framework Cocoa" "-framework OpenGL")
-    endif ()
-
     target_compile_options(mango PUBLIC "-mmacosx-version-min=10.13")
-    target_compile_options(mango-opengl PUBLIC "-mmacosx-version-min=10.13")
 endif ()
 
 # add "-lpthread" linker option when platform has support
@@ -387,12 +352,6 @@ TARGET_INCLUDE_DIRECTORIES(mango PUBLIC
 )
 
 INSTALL(TARGETS mango
-    LIBRARY DESTINATION "lib"
-    ARCHIVE DESTINATION "lib"
-    RUNTIME DESTINATION "bin"
-)
-
-INSTALL(TARGETS mango-opengl
     LIBRARY DESTINATION "lib"
     ARCHIVE DESTINATION "lib"
     RUNTIME DESTINATION "bin"
