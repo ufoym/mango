@@ -7,7 +7,7 @@
     Based on Self Organizing Map (SOM) neural network algorithm by Kohonen
 */
 #include <mango/core/bits.hpp>
-#include <mango/math/math.hpp>
+#include <mango/math/vector.hpp>
 #include <mango/core/exception.hpp>
 #include <mango/image/quantize.hpp>
 
@@ -25,31 +25,31 @@ namespace
         INITRAD = NETSIZE >> 3
     };
 
-    #define prime1		    499
-    #define prime2		    491
-    #define prime3		    487
-    #define prime4		    503
+    #define prime1          499
+    #define prime2          491
+    #define prime3          487
+    #define prime4          503
 
-    #define netbiasshift	4
-    #define ncycles			100
+    #define netbiasshift    4
+    #define ncycles         100
 
     #define intbiasshift    16
-    #define intbias			(((int) 1) << intbiasshift)
-    #define gammashift  	10
-    #define gamma   		(((int) 1) << gammashift)
-    #define betashift  		10
-    #define beta			(intbias >> betashift)
-    #define betagamma		(intbias << (gammashift - betashift))
+    #define intbias         (((int) 1) << intbiasshift)
+    #define gammashift      10
+    #define gamma           (((int) 1) << gammashift)
+    #define betashift       10
+    #define beta            (intbias >> betashift)
+    #define betagamma       (intbias << (gammashift - betashift))
 
-    #define radiusbiasshift	6
-    #define radiusbias		(((int) 1) << radiusbiasshift)
-    #define initradius		(INITRAD * radiusbias)
-    #define radiusdec		30
+    #define radiusbiasshift 6
+    #define radiusbias      (((int) 1) << radiusbiasshift)
+    #define initradius      (INITRAD * radiusbias)
+    #define radiusdec       30
 
-    #define alphabiasshift	10
-    #define initalpha		(((int) 1) << alphabiasshift)
+    #define alphabiasshift  10
+    #define initalpha       (((int) 1) << alphabiasshift)
 
-    #define radbiasshift	8
+    #define radbiasshift    8
     #define alpharadbshift  (alphabiasshift + radbiasshift)
 
     // ------------------------------------------------------------
@@ -101,10 +101,10 @@ namespace
 
     int NeuQuant::contest(int r, int g, int b)
     {
-        int	bestd = ~(((int)1) << 31);
-        int	bestbiasd = bestd;
-        int	bestpos = -1;
-        int	bestbiaspos = bestpos;
+        int bestd = ~(((int)1) << 31);
+        int bestbiasd = bestd;
+        int bestpos = -1;
+        int bestbiaspos = bestpos;
         int* p = bias;
         int* f = freq;
 
@@ -151,14 +151,14 @@ namespace
     {
         const int lo = std::max(i - rad, -1);
         const int hi = std::min(i + rad, int(NETSIZE));
-        int	j = i + 1;
-        int	k = i - 1;
+        int j = i + 1;
+        int k = i - 1;
 
         const int* q = radpower;
         while ((j < hi) || (k > lo))
         {
             int* p;
-            int	a = *(++q);
+            int a = *(++q);
 
             if (j < hi)
             {
@@ -181,8 +181,8 @@ namespace
     {
         const int alphadec = 30 + ((m_sample_factor - 1) / 3);
 
-        u8*	p = m_image;
-        u8*	lim = m_image + m_length_count;
+        u8* p = m_image;
+        u8* lim = m_image + m_length_count;
         int samplepixels = m_length_count / (4 * m_sample_factor);
         int delta = samplepixels / ncycles;
         int alpha = initalpha;
@@ -191,9 +191,9 @@ namespace
         int rad = radius >> radiusbiasshift;
         if (rad > 1)
         {
-            int	radrad = rad * rad;
-            int	adder = 1;
-            int	bigalpha = (alpha << radbiasshift) / radrad;
+            int radrad = rad * rad;
+            int adder = 1;
+            int bigalpha = (alpha << radbiasshift) / radrad;
 
             for (int i = 0; i < rad; ++i)
             {
@@ -207,7 +207,7 @@ namespace
             rad = 0;
         }
 
-        int	step;
+        int step;
         if (m_length_count % prime1)
         {
             step = 4 * prime1;
@@ -233,7 +233,7 @@ namespace
 
         int j, r, g, b;
         int i = 0;
-        int	phase = 0;
+        int phase = 0;
         while (i++ < samplepixels)
         {
             r = p[0] << netbiasshift;
@@ -263,9 +263,9 @@ namespace
 
                 if (rad > 1)
                 {
-                    int	radrad = rad * rad;
-                    int	adder = 1;
-                    int	bigalpha = (alpha << radbiasshift) / radrad;
+                    int radrad = rad * rad;
+                    int adder = 1;
+                    int bigalpha = (alpha << radbiasshift) / radrad;
 
                     for (int k = 0; k < rad; ++k)
                     {
@@ -471,10 +471,10 @@ namespace mango::image
 
     int ColorQuantizer::getIndex(int r, int g, int b) const
     {
-        int	bestd = 1000;
-        int	best = -1;
-        int	i = m_netindex[g];
-        int	j = i - 1;
+        int bestd = 1000;
+        int best = -1;
+        int i = m_netindex[g];
+        int j = i - 1;
 
         while ((i < NETSIZE) || (j >= 0))
         {

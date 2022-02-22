@@ -8,7 +8,7 @@
 #include <string>
 #include <mango/core/core.hpp>
 #include <mango/image/image.hpp>
-#include <mango/math/math.hpp>
+#include <mango/math/vector.hpp>
 
 namespace mango::jpeg
 {
@@ -119,7 +119,7 @@ namespace mango::jpeg
     using mango::u64;
     using mango::s16;
 
-	using mango::Stream;
+    using mango::Stream;
     using mango::ThreadPool;
     using mango::Memory;
     using mango::ConstMemory;
@@ -138,7 +138,7 @@ namespace mango::jpeg
 
     using DataType = u64;
 
-	#define bextr mango::u64_extract_bits
+    #define bextr mango::u64_extract_bits
 
     #define JPEG_REGISTER_BITS  64
     #define JPEG_REGISTER_BYTES 8
@@ -148,7 +148,7 @@ namespace mango::jpeg
 
     using DataType = u32;
 
-	#define bextr mango::u32_extract_bits
+    #define bextr mango::u32_extract_bits
 
     #define JPEG_REGISTER_BITS  32
     #define JPEG_REGISTER_BYTES 4
@@ -337,7 +337,7 @@ namespace mango::jpeg
         int frames;
         ColorSpace colorspace = ColorSpace::CMYK; // default
 
-	    void (*idct) (u8* dest, const s16* data, const s16* qt);
+        void (*idct) (u8* dest, const s16* data, const s16* qt);
 
         void (*process            ) (u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height);
         void (*process_y          ) (u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height);
@@ -570,6 +570,6 @@ namespace mango::jpeg
 #endif // MANGO_ENABLE_SSE4_1
 
     SampleFormat getSampleFormat(const Format& format);
-	ImageEncodeStatus encodeImage(Stream& stream, const Surface& surface, const ImageEncodeOptions& options);
+    ImageEncodeStatus encodeImage(Stream& stream, const Surface& surface, const ImageEncodeOptions& options);
 
 } // namespace mango::jpeg

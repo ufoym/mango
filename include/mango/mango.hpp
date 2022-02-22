@@ -8,4 +8,3 @@
 #include <mango/filesystem/filesystem.hpp>
 #include <mango/image/image.hpp>
 #include <mango/simd/simd.hpp>
-#include <mango/math/math.hpp>

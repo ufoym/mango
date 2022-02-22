@@ -4,7 +4,7 @@
 */
 #include <mango/core/exception.hpp>
 #include <mango/core/bits.hpp>
-#include <mango/math/math.hpp>
+#include <mango/math/vector.hpp>
 #include <mango/image/format.hpp>
 
 namespace mango::image
@@ -59,18 +59,18 @@ namespace mango::image
         assert(bits >= 8 && bits <= 128);
 
         // compute component indices from order mask
-		const int c0 = (order >> 0) & 3;
-		const int c1 = (order >> 2) & 3;
-		const int c2 = (order >> 4) & 3;
-		const int c3 = (order >> 6) & 3;
+        const int c0 = (order >> 0) & 3;
+        const int c1 = (order >> 2) & 3;
+        const int c2 = (order >> 4) & 3;
+        const int c3 = (order >> 6) & 3;
 
-		// compute component offset
+        // compute component offset
         offset[c0] = u8(0);
         offset[c1] = u8(s0);
         offset[c2] = u8(s0 + s1);
         offset[c3] = u8(s0 + s1 + s2);
 
-		// compute component size
+        // compute component size
         size[c0] = u8(s0);
         size[c1] = u8(s1);
         size[c2] = u8(s2);
@@ -150,7 +150,7 @@ namespace mango::image
             case UNORM:
                 for (int i = 0; i < 4; ++i)
                 {
-					const u32 mask = (1 << size[i]) - 1;
+                    const u32 mask = (1 << size[i]) - 1;
                     u32 component = u32(mask * scale[i] + 0.5f) << offset[i];
                     color |= component;
                 }
@@ -161,9 +161,9 @@ namespace mango::image
             case UINT:
             case SINT:
             case FLOAT16:
-			case FLOAT32:
-			case FLOAT64:
-				// not supported
+            case FLOAT32:
+            case FLOAT64:
+                // not supported
                 break;
         }
 
