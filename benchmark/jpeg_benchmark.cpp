@@ -52,7 +52,7 @@ Surface load_jpeg(const char* filename)
 
     fclose(file);
 
-    Format format = Format(24, Format::UNORM, Format::RGB, 8, 8, 9);
+    Format format = Format(24, Format::UNORM, Format::RGB, 8, 8, 8);
     if (numChannels == 4)
         format = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
 
