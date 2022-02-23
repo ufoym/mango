@@ -1,7 +1,5 @@
 project(benchmark)
 
-add_compile_options(-Wall -O3 -g)
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
