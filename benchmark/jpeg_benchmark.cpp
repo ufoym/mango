@@ -2,41 +2,11 @@
     MANGO Multimedia Development Platform
     Copyright (C) 2012-2021 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
-#include <mango/mango.hpp>
-
-using namespace mango;
-using namespace mango::image;
+#include "mango.hpp"
 
 #define TEST_LIBJPEG
 #define TEST_STB
 #define TEST_JPEG_COMPRESSOR
-
-
-// ----------------------------------------------------------------------
-// util
-// ----------------------------------------------------------------------
-
-#include <fstream>
-
-ConstMemory read(const char * filename) {
-    ConstMemory memory;
-
-    std::ifstream file(filename, std::ios::binary | std::ios::ate);
-    if (!file.is_open())
-        printf("error opening the input file\n");
-
-    std::streamsize size = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    char * buffer = new char[size];
-    if (!file.read(buffer, size))
-        printf("error reading the input file\n");
-    file.close();
-
-    memory.size = size;
-    memory.address = reinterpret_cast<u8*>(buffer);
-    return memory;
-}
 
 // ----------------------------------------------------------------------
 // libjpeg
@@ -216,9 +186,6 @@ int main(int argc, const char* argv[])
 
     const char* filename = argv[1];
 
-    bool simd = true;
-    bool multithread = true;
-
     printf("----------------------------------------------\n");
     printf("                load         save             \n");
     printf("----------------------------------------------\n");
@@ -275,38 +242,10 @@ int main(int argc, const char* argv[])
     // ------------------------------------------------------------------
 
     time0 = Time::us();
-
-    ImageDecodeOptions decode_options;
-    decode_options.simd = simd;
-    decode_options.multithread = multithread;
-
-    Surface bitmap;
-
-    ConstMemory memory = read(filename);
-    ImageDecoder decoder(memory, filename);
-    if (decoder.isDecoder()) {
-        ImageHeader header = decoder.header();
-        bitmap.format = header.format;
-        if (decode_options.palette) {
-            decode_options.palette->size = 0;
-            if (header.palette)
-                bitmap.format = IndexedFormat(8);
-        }
-        bitmap.width  = header.width;
-        bitmap.height = header.height;
-        bitmap.stride = header.width * bitmap.format.bytes();
-        bitmap.image  = new u8[header.height * bitmap.stride];
-        ImageDecodeStatus status = decoder.decode(bitmap, decode_options, 0, 0, 0);
-        MANGO_UNREFERENCED(status);
-    }
+    Surface bitmap = mango_load_jpeg(filename);
 
     time1 = Time::us();
-
-    ImageEncodeOptions encode_options;
-    encode_options.quality = 0.70f;
-    encode_options.simd = simd;
-    encode_options.multithread = multithread;
-    bitmap.save("output-mango.jpg", encode_options);
+    mango_save_jpeg("output-mango.jpg", bitmap);
 
     time2 = Time::us();
     print("mango:   ", time1 - time0, time2 - time1);
