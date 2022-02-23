@@ -15,12 +15,12 @@
 #include <jpeglib.h>
 #include <jerror.h>
 
-Surface load_jpeg(const char* filename)
+mango::image::Surface load_jpeg(const char* filename)
 {
     FILE* file = fopen(filename, "rb" );
     if (!file)
     {
-        return Surface();
+        return mango::image::Surface();
     }
 
     struct jpeg_decompress_struct info;
@@ -40,7 +40,7 @@ Surface load_jpeg(const char* filename)
     unsigned long dataSize = w * h * numChannels;
 
     // read scanlines one at a time & put bytes in jdata[] array (assumes an RGB image)
-    unsigned char *data = new u8[dataSize];;
+    unsigned char *data = new unsigned char[dataSize];;
     unsigned char *rowptr[ 1 ]; // array or pointers
     for ( ; info.output_scanline < info.output_height ; )
     {
@@ -52,14 +52,18 @@ Surface load_jpeg(const char* filename)
 
     fclose(file);
 
-    Format format = Format(24, Format::UNORM, Format::RGB, 8, 8, 8);
+    mango::image::Format format = mango::image::Format(
+        24, mango::image::Format::UNORM,
+        mango::image::Format::RGB, 8, 8, 8);
     if (numChannels == 4)
-        format = Format(32, Format::UNORM, Format::RGBA, 8, 8, 8, 8);
+        format = mango::image::Format(
+            32, mango::image::Format::UNORM,
+            mango::image::Format::RGBA, 8, 8, 8, 8);
 
-    return Surface(w, h, format, w * numChannels, data);
+    return mango::image::Surface(w, h, format, w * numChannels, data);
 }
 
-void save_jpeg(const char* filename, const Surface& surface)
+void save_jpeg(const char* filename, const mango::image::Surface& surface)
 {
     struct jpeg_compress_struct cinfo;
     jpeg_create_compress(&cinfo);
@@ -118,15 +122,17 @@ void save_jpeg(const char* filename, const Surface& surface)
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-Surface stb_load_jpeg(const char* filename)
+mango::image::Surface stb_load_jpeg(const char* filename)
 {
     int width, height, bpp;
-    u8* rgb = stbi_load(filename, &width, &height, &bpp, 3);
+    unsigned char* rgb = stbi_load(filename, &width, &height, &bpp, 3);
 
-    return Surface(width, height, Format(24, Format::UNORM, Format::RGB, 8, 8, 8), width * 3, rgb);
+    return mango::image::Surface(
+        width, height, mango::image::Format(24, mango::image::Format::UNORM,
+        mango::image::Format::RGB, 8, 8, 8), width * 3, rgb);
 }
 
-void stb_save_jpeg(const char* filename, const Surface& surface)
+void stb_save_jpeg(const char* filename, const mango::image::Surface& surface)
 {
     stbi_write_jpg(filename, surface.width, surface.height, 3, surface.image, surface.width*3);
     stbi_image_free(surface.image);
@@ -141,16 +147,18 @@ void stb_save_jpeg(const char* filename, const Surface& surface)
 #include "jpeg-compressor/jpgd.h"
 #include "jpeg-compressor/jpge.h"
 
-Surface jpgd_load(const char* filename)
+mango::image::Surface jpgd_load(const char* filename)
 {
     int width;
     int height;
     int comps;
-    u8* image = jpgd::decompress_jpeg_image_from_file(filename, &width, &height, &comps, 4);
-    return Surface(width, height, Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8), width * 4, image);
+    unsigned char* image = jpgd::decompress_jpeg_image_from_file(filename, &width, &height, &comps, 4);
+    return mango::image::Surface(
+        width, height, mango::image::Format(32, mango::image::Format::UNORM,
+        mango::image::Format::BGRA, 8, 8, 8, 8), width * 4, image);
 }
 
-void jpge_save(const char* filename, const Surface& surface)
+void jpge_save(const char* filename, const mango::image::Surface& surface)
 {
     jpge::compress_image_to_jpeg_file(filename, surface.width, surface.height, 4, surface.image);
     free(surface.image);
@@ -162,7 +170,7 @@ void jpge_save(const char* filename, const Surface& surface)
 // print
 // ----------------------------------------------------------------------
 
-void print(const char* name, u64 load, u64 save)
+void print(const char* name, std::uint64_t load, std::uint64_t save)
 {
     printf("%s", name);
     printf("%7d.%d ms ", int(load / 1000), int(load % 1000) / 100);
@@ -179,26 +187,26 @@ int main(int argc, const char* argv[])
     const char* default_filename = "../test.jpg";
     const char* filename = argc > 1 ? argv[1] : default_filename;
 
-    printf("%s\n", getSystemInfo().c_str());
+    printf("%s\n", mango::getSystemInfo().c_str());
     printf("----------------------------------------------\n");
     printf("                load         save             \n");
     printf("----------------------------------------------\n");
 
-    u64 time0;
-    u64 time1;
-    u64 time2;
+    std::uint64_t time0;
+    std::uint64_t time1;
+    std::uint64_t time2;
 
     // ------------------------------------------------------------------
 
 #ifdef TEST_LIBJPEG
 
-    time0 = Time::us();
-    Surface s = load_jpeg(filename);
+    time0 = mango::Time::us();
+    mango::image::Surface s = load_jpeg(filename);
 
-    time1 = Time::us();
+    time1 = mango::Time::us();
     save_jpeg("output-libjpeg.jpg", s);
 
-    time2 = Time::us();
+    time2 = mango::Time::us();
     print("libjpeg: ", time1 - time0, time2 - time1);
 
 #endif
@@ -207,13 +215,13 @@ int main(int argc, const char* argv[])
 
 #ifdef TEST_STB
 
-    time0 = Time::us();
-    Surface s_stb = stb_load_jpeg(filename);
+    time0 = mango::Time::us();
+    mango::image::Surface s_stb = stb_load_jpeg(filename);
 
-    time1 = Time::us();
+    time1 = mango::Time::us();
     stb_save_jpeg("output-stb.jpg", s_stb);
 
-    time2 = Time::us();
+    time2 = mango::Time::us();
     print("stb:     ", time1 - time0, time2 - time1);
 
 #endif
@@ -222,25 +230,25 @@ int main(int argc, const char* argv[])
 
 #ifdef TEST_JPEG_COMPRESSOR
 
-    time0 = Time::us();
-    Surface s_jpgd = jpgd_load(filename);
+    time0 = mango::Time::us();
+    mango::image::Surface s_jpgd = jpgd_load(filename);
 
-    time1 = Time::us();
+    time1 = mango::Time::us();
     jpge_save("output-jpge.jpg", s_jpgd);
 
-    time2 = Time::us();
+    time2 = mango::Time::us();
     print("jpgd:    ", time1 - time0, time2 - time1);
 
 #endif
 
     // ------------------------------------------------------------------
 
-    time0 = Time::us();
-    Surface bitmap = mango_load_jpeg(filename);
+    time0 = mango::Time::us();
+    mango::image::Surface bitmap = mango_load_jpeg(filename);
 
-    time1 = Time::us();
+    time1 = mango::Time::us();
     mango_save_jpeg("output-mango.jpg", bitmap);
 
-    time2 = Time::us();
+    time2 = mango::Time::us();
     print("mango:   ", time1 - time0, time2 - time1);
 }
