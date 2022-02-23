@@ -260,7 +260,9 @@ else ()
         endif ()
     endif ()
 endif ()
+
 add_subdirectory(benchmark)
+add_subdirectory(test)
 
 # ------------------------------------------------------------------------------
 # install

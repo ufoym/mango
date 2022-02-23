@@ -13,8 +13,6 @@ elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "(arm)")
     set(CMAKE_CXX_FLAGS "-fpermissive -Wno-psabi")
 endif ()
 
-link_libraries(mango)
-
 # add "-lpthread" linker option when platform has support
 if (UNIX)
     set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
@@ -48,4 +46,4 @@ add_executable(benchmark
     jpeg-compressor/jpgd.cpp
     jpeg-compressor/jpge.cpp
 )
-target_link_libraries(benchmark jpeg)
+target_link_libraries(benchmark jpeg mango)
