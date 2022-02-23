@@ -176,16 +176,10 @@ void print(const char* name, u64 load, u64 save)
 
 int main(int argc, const char* argv[])
 {
-    if (argc < 2)
-    {
-        printf("Too few arguments. usage: <filename.jpg>\n");
-        exit(1);
-    }
+    const char* default_filename = "../test.jpg";
+    const char* filename = argc > 1 ? argv[1] : default_filename;
 
     printf("%s\n", getSystemInfo().c_str());
-
-    const char* filename = argv[1];
-
     printf("----------------------------------------------\n");
     printf("                load         save             \n");
     printf("----------------------------------------------\n");
