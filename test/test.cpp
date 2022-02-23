@@ -7,14 +7,14 @@ void print(const std::string name, std::uint64_t load, std::uint64_t save, float
     printf("%-16s", name.c_str());
     printf("%7d.%d ms ", int(load / 1000), int(load % 1000) / 100);
     printf("%7d.%d ms ", int(save / 1000), int(save % 1000) / 100);
-    printf("%12f ", diff);
+    printf("%12.1f ", diff);
     printf("\n");
 }
 
 float get_diff(const std::string pathA, const std::string pathB) {
     cv::Mat imgA = cv::imread(pathA);
     cv::Mat imgB = cv::imread(pathB);
-    return cv::norm(imgA, imgB, cv::NORM_RELATIVE | cv::NORM_L1);
+    return cv::norm(imgA, imgB);
 }
 
 int main() {
@@ -29,7 +29,7 @@ int main() {
 
     printf("%s\n", mango::getSystemInfo().c_str());
     printf("-----------------------------------------------------------\n");
-    printf("    test-case          load         save         diff      \n");
+    printf("    test-case          load         save          diff     \n");
     printf("-----------------------------------------------------------\n");
 
     for (auto filename: filenames) {
