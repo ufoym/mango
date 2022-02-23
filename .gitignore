@@ -1,4 +1,4 @@
-*.jpg
+output-*.jpg
 build
 .vscode
 .DS_Store

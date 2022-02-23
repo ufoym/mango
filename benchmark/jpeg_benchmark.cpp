@@ -184,7 +184,7 @@ void print(const char* name, std::uint64_t load, std::uint64_t save)
 
 int main(int argc, const char* argv[])
 {
-    const char* default_filename = "../test.jpg";
+    const char* default_filename = "../../test/images/jpeg444.jpg";
     const char* filename = argc > 1 ? argv[1] : default_filename;
 
     printf("%s\n", mango::getSystemInfo().c_str());
