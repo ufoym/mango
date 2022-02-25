@@ -74,5 +74,9 @@ void mango_save_jpeg(
     encode_options.quality = quality;
     encode_options.simd = simd;
     encode_options.multithread = multithread;
-    bitmap.save(filename, encode_options);
+    mango::image::ImageEncoder encoder(filename);
+    if (encoder.isEncoder()) {
+        mango::filesystem::FileStream file(filename, mango::Stream::WRITE);
+        encoder.encode(file, bitmap, encode_options);
+    }
 }
