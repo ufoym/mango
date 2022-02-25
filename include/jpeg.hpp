@@ -1,4 +1,5 @@
 #include <mango/mango.hpp>
+#include "jpeg_core.hpp"
 
 // ----------------------------------------------------------------------
 // util
@@ -56,7 +57,9 @@ mango::image::Surface mango_load_jpeg(
         bitmap.height = header.height;
         bitmap.stride = header.width * bitmap.format.bytes();
         bitmap.image  = new unsigned char[header.height * bitmap.stride];
-        mango::image::ImageDecodeStatus status = decoder.decode(bitmap, decode_options, 0, 0, 0);
+
+        mango::jpeg::Parser parser(memory);
+        mango::image::ImageDecodeStatus status = parser.decode(bitmap, decode_options);
         MANGO_UNREFERENCED(status);
     }
 
