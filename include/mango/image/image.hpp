@@ -9,8 +9,6 @@
 #include <mango/image/color.hpp>
 #include <mango/image/format.hpp>
 #include <mango/image/compression.hpp>
-#include <mango/image/decoder.hpp>
-#include <mango/image/encoder.hpp>
 #include <mango/image/blitter.hpp>
 #include <mango/image/surface.hpp>
 #include <mango/image/quantize.hpp>

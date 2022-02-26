@@ -117,8 +117,6 @@ endif()
 FILE(GLOB IMAGE
     "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/image/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/image/*.cpp")
-FILE(GLOB JPEG
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/jpeg/*.cpp")
 FILE(GLOB MATH
     "${CMAKE_CURRENT_SOURCE_DIR}/include/mango/math/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/source/mango/math/*.cpp")
@@ -129,7 +127,6 @@ FILE(GLOB SIMD
 SOURCE_GROUP("core" FILES ${CORE})
 SOURCE_GROUP("filesystem" FILES ${FILESYSTEM})
 SOURCE_GROUP("image" FILES ${IMAGE})
-SOURCE_GROUP("jpeg" FILES ${JPEG})
 SOURCE_GROUP("math" FILES ${MATH})
 SOURCE_GROUP("simd" FILES ${SIMD})
 
@@ -144,7 +141,6 @@ ADD_LIBRARY(mango
     ${CORE}
     ${FILESYSTEM}
     ${IMAGE}
-    ${JPEG}
     ${MATH}
     ${SIMD}
 )

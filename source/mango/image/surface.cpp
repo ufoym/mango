@@ -23,7 +23,7 @@ namespace
 
     void clear_u8_scan(u8* dest, int count, u32 color)
     {
-		std::memset(dest, u8(color), count);
+        std::memset(dest, u8(color), count);
     }
 
     void clear_u16_scan(u8* dest, int count, u32 color)
@@ -77,45 +77,6 @@ namespace
         }
 
         return size;
-    }
-
-    // ----------------------------------------------------------------------------
-    // create_surface()
-    // ----------------------------------------------------------------------------
-
-    Surface create_surface(ConstMemory memory, const std::string& extension, const Format* format, const ImageDecodeOptions& options)
-    {
-        Surface surface;
-
-        ImageDecoder decoder(memory, extension);
-        if (decoder.isDecoder())
-        {
-            ImageHeader header = decoder.header();
-
-            surface.format = format ? *format : header.format;
-
-            if (options.palette)
-            {
-                // the decoder will set palette if present
-                options.palette->size = 0;
-
-                if (header.palette)
-                {
-                    surface.format = IndexedFormat(8);
-                }
-            }
-
-            surface.width  = header.width;
-            surface.height = header.height;
-            surface.stride = header.width * surface.format.bytes();
-            surface.image  = new u8[header.height * surface.stride];
-
-            // decode
-            ImageDecodeStatus status = decoder.decode(surface, options, 0, 0, 0);
-            MANGO_UNREFERENCED(status);
-        }
-
-        return surface;
     }
 
 } // namespace
@@ -196,16 +157,6 @@ namespace mango::image
         width = surface.width;
         height = surface.height;
         return *this;
-    }
-
-    void Surface::save(const std::string& filename, const ImageEncodeOptions& options) const
-    {
-        ImageEncoder encoder(filename);
-        if (encoder.isEncoder())
-        {
-            filesystem::OutputFileStream file(filename);
-            encoder.encode(file, *this, options);
-        }
     }
 
     void Surface::clear(float red, float green, float blue, float alpha) const
@@ -331,7 +282,7 @@ namespace mango::image
             }
         }
         else
-#endif        
+#endif
         {
             blitter.convert(rect);
         }
@@ -423,26 +374,6 @@ namespace mango::image
         image = new u8[bytes];
 
         blit(0, 0, source);
-    }
-
-    Bitmap::Bitmap(ConstMemory memory, const std::string& extension, const ImageDecodeOptions& options)
-        : Surface(create_surface(memory, extension, nullptr, options))
-    {
-    }
-
-    Bitmap::Bitmap(ConstMemory memory, const std::string& extension, const Format& format, const ImageDecodeOptions& options)
-        : Surface(create_surface(memory, extension, &format, options))
-    {
-    }
-
-    Bitmap::Bitmap(const std::string& filename, const ImageDecodeOptions& options)
-        : Surface(create_surface(filesystem::File(filename), filesystem::getExtension(filename), nullptr, options))
-    {
-    }
-
-    Bitmap::Bitmap(const std::string& filename, const Format& format, const ImageDecodeOptions& options)
-        : Surface(create_surface(filesystem::File(filename), filesystem::getExtension(filename), &format, options))
-    {
     }
 
     Bitmap::Bitmap(Bitmap&& bitmap)

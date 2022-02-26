@@ -10,12 +10,96 @@
 #include <cstdio>
 #include <cstddef>
 #include <cstring>
-#include <mango/core/core.hpp>
-#include <mango/image/image.hpp>
+
 #include <mango/math/vector.hpp>
-#include <mango/core/thread.hpp>
+
+#include <mango/core/timer.hpp>
+#include <mango/core/system.hpp>
 #include <mango/core/endian.hpp>
+#include <mango/core/stream.hpp>
+#include <mango/core/buffer.hpp>
+#include <mango/core/memory.hpp>
+#include <mango/core/string.hpp>
+#include <mango/core/thread.hpp>
+#include <mango/core/pointer.hpp>
 #include <mango/core/cpuinfo.hpp>
+#include <mango/core/configure.hpp>
+#include <mango/core/exception.hpp>
+
+#include <mango/image/exif.hpp>
+#include <mango/image/fourcc.hpp>
+#include <mango/image/color.hpp>
+#include <mango/image/format.hpp>
+#include <mango/image/blitter.hpp>
+#include <mango/image/surface.hpp>
+#include <mango/image/quantize.hpp>
+#include <mango/image/compression.hpp>
+
+
+namespace mango::image
+{
+    struct ImageHeader : Status
+    {
+        int     width = 0;   // width
+        int     height = 0;  // height
+        int     depth = 0;   // depth
+        int     levels = 0;  // mipmap levels
+        int     faces = 0;   // cubemap faces
+        bool    palette = false; // palette is available
+        bool    premultiplied = false; // alpha is premultiplied
+        Format  format; // preferred format (fastest available "direct" decoding is possible)
+        TextureCompression compression = TextureCompression::NONE;
+    };
+
+    struct ImageDecodeStatus : Status
+    {
+        bool direct = false;
+
+        // animation information
+        // NOTE: we would love to simply return number of animation frames in the ImageHeader
+        //       but some formats do not provide this information without decompressing frames
+        //       until running out of data.
+        int current_frame_index = 0;
+        int next_frame_index = 0;
+
+        // animation frame duration in (numerator / denominator) seconds
+        int frame_delay_numerator = 1;    // 1 frame...
+        int frame_delay_denominator = 60; // ... every 60th of a second
+    };
+
+    struct ImageDecodeOptions
+    {
+        // request indexed decoding
+        // - palette is resolved into the provided palette object
+        // - decode() destination surface must be indexed
+        Palette* palette = nullptr; // enable indexed decoding by pointing to a palette
+
+        bool simd = true;
+        bool multithread = true;
+    };
+
+    struct ImageEncodeStatus : Status
+    {
+        bool direct = false;
+    };
+
+    struct ImageEncodeOptions
+    {
+        Palette palette;
+
+        ConstMemory icc; // jpeg, png
+
+        float quality = 0.90f; // jpeg: [0.0, 1.0]
+        int compression = 5; // png: [0, 10]
+        bool filtering = false; // png
+        bool dithering = true; // gif
+        bool lossless = false; // webp
+
+        bool simd = true; // jpeg
+        bool multithread = true; // jpeg
+    };
+}
+
 
 // ----------------------------------------------------------------------------
 // main
