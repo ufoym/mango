@@ -7646,73 +7646,336 @@ static inline void write_color_rgb(u8* dest, int y, int r, int g, int b)
     dest[2] = byteclamp(b + y);
 }
 
+namespace process::func
+{
+    typedef void WRITE_COLOR_FUNC(u8*, int, int, int, int);
+    void FUNCTION_GENERIC(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, WRITE_COLOR_FUNC * WRITE_COLOR)
+    {
+        u8 result[JPEG_MAX_SAMPLES_IN_MCU];
+
+        for (int i = 0; i < state->blocks; ++i)
+        {
+            Block& block = state->block[i];
+            state->idct(result + i * 64, data, block.qt);
+            data += 64;
+        }
+
+        // MCU size in blocks
+        int xsize = (width + 7) / 8;
+        int ysize = (height + 7) / 8;
+
+        int cb_offset = state->frame[1].offset * 64;
+        int cb_xshift = state->frame[1].Hsf;
+        int cb_yshift = state->frame[1].Vsf;
+
+        int cr_offset = state->frame[2].offset * 64;
+        int cr_xshift = state->frame[2].Hsf;
+        int cr_yshift = state->frame[2].Vsf;
+
+        u8* cb_data = result + cb_offset;
+        u8* cr_data = result + cr_offset;
+
+        // process MCU
+        for (int yb = 0; yb < ysize; ++yb)
+        {
+            // vertical clipping limit for current block
+            const int ymax = std::min(8, height - yb * 8);
+
+            for (int xb = 0; xb < xsize; ++xb)
+            {
+                u8* dest_block = dest + yb * 8 * stride + xb * 8 * XSTEP;
+                u8* y_block = result + (yb * xsize + xb) * 64;
+                u8* cb_block = cb_data + yb * (8 >> cb_yshift) * 8 + xb * (8 >> cb_xshift);
+                u8* cr_block = cr_data + yb * (8 >> cr_yshift) * 8 + xb * (8 >> cr_xshift);
+
+                // horizontal clipping limit for current block
+                const int xmax = std::min(8, width - xb * 8);
+
+                // process 8x8 block
+                for (int y = 0; y < ymax; ++y)
+                {
+                    u8* d = dest_block;
+                    u8* cb_scan = cb_block + (y >> cb_yshift) * 8;
+                    u8* cr_scan = cr_block + (y >> cr_yshift) * 8;
+
+                    for (int x = 0; x < xmax; ++x)
+                    {
+                        u8 y0 = y_block[x];
+                        u8 cb = cb_scan[x >> cb_xshift];
+                        u8 cr = cr_scan[x >> cr_xshift];
+                        int r, g, b;
+                        COMPUTE_CBCR(cb, cr);
+                        WRITE_COLOR(d, y0, r, g, b);
+                        d += XSTEP;
+                    }
+
+                    dest_block += stride;
+                    y_block += 8;
+                }
+            }
+        }
+    }
+    void FUNCTION_YCBCR_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, WRITE_COLOR_FUNC * WRITE_COLOR)
+    {
+        u8 result[64 * 3];
+
+        state->idct(result + 64 * 0, data + 64 * 0, state->block[0].qt); // Y
+        state->idct(result + 64 * 1, data + 64 * 1, state->block[1].qt); // Cb
+        state->idct(result + 64 * 2, data + 64 * 2, state->block[2].qt); // Cr
+
+        // color conversion
+        const u8* src = result;
+
+        for (int y = 0; y < 8; ++y)
+        {
+            const u8* s = src + y * 8;
+            u8* d = dest;
+
+            for (int x = 0; x < 8; ++x)
+            {
+                int y0 = s[x];
+                int cb = s[x + 64];
+                int cr = s[x + 128];
+                int r, g, b;
+                COMPUTE_CBCR(cb, cr);
+                WRITE_COLOR(d, y0, r, g, b);
+                d += XSTEP;
+            }
+
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+    void FUNCTION_YCBCR_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, WRITE_COLOR_FUNC * WRITE_COLOR)
+    {
+        u8 result[64 * 4];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y0
+        state->idct(result +  64, data +  64, state->block[1].qt); // Y1
+        state->idct(result + 128, data + 128, state->block[2].qt); // Cb
+        state->idct(result + 192, data + 192, state->block[3].qt); // Cr
+
+        // color conversion
+        for (int y = 0; y < 8; ++y)
+        {
+            u8* d0 = dest;
+            u8* d1 = dest + stride;
+            const u8* s = result + y * 16;
+            const u8* c = result + y * 8 + 128;
+
+            for (int x = 0; x < 8; ++x)
+            {
+                int y0 = s[x + 0];
+                int y1 = s[x + 8];
+                int cb = c[x + 0];
+                int cr = c[x + 64];
+                int r, g, b;
+                COMPUTE_CBCR(cb, cr);
+                WRITE_COLOR(d0, y0, r, g, b);
+                WRITE_COLOR(d1, y1, r, g, b);
+                d0 += XSTEP;
+                d1 += XSTEP;
+            }
+
+            dest += stride * 2;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+    void FUNCTION_YCBCR_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, WRITE_COLOR_FUNC * WRITE_COLOR)
+    {
+        u8 result[64 * 4];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y0
+        state->idct(result +  64, data +  64, state->block[1].qt); // Y1
+        state->idct(result + 128, data + 128, state->block[2].qt); // Cb
+        state->idct(result + 192, data + 192, state->block[3].qt); // Cr
+
+        // color conversion
+        for (int y = 0; y < 8; ++y)
+        {
+            u8* d = dest;
+            u8* s = result + y * 8;
+            u8* c = result + y * 8 + 128;
+
+            for (int x = 0; x < 4; ++x)
+            {
+                int y0 = s[x * 2 + 0];
+                int y1 = s[x * 2 + 1];
+                int cb = c[x + 0];
+                int cr = c[x + 64];
+                int r, g, b;
+                COMPUTE_CBCR(cb, cr);
+                WRITE_COLOR(d + 0 * XSTEP, y0, r, g, b);
+                WRITE_COLOR(d + 1 * XSTEP, y1, r, g, b);
+                d += 2 * XSTEP;
+            }
+
+            for (int x = 0; x < 4; ++x)
+            {
+                int y0 = s[x * 2 + 64];
+                int y1 = s[x * 2 + 65];
+                int cb = c[x + 4];
+                int cr = c[x + 68];
+                int r, g, b;
+                COMPUTE_CBCR(cb, cr);
+                WRITE_COLOR(d + 0 * XSTEP, y0, r, g, b);
+                WRITE_COLOR(d + 1 * XSTEP, y1, r, g, b);
+                d += 2 * XSTEP;
+            }
+
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+    void FUNCTION_YCBCR_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, WRITE_COLOR_FUNC * WRITE_COLOR)
+    {
+        u8 result[64 * 6];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y0
+        state->idct(result +  64, data +  64, state->block[1].qt); // Y1
+        state->idct(result + 128, data + 128, state->block[2].qt); // Y2
+        state->idct(result + 192, data + 192, state->block[3].qt); // Y3
+        state->idct(result + 256, data + 256, state->block[4].qt); // Cb
+        state->idct(result + 320, data + 320, state->block[5].qt); // Cr
+
+        // color conversion
+        for (int i = 0; i < 4; ++i)
+        {
+            int cbcr_offset = (i & 1) * 4 + (i >> 1) * 32;
+            int y_offset = i * 64;
+            size_t dest_offset = (i >> 1) * 8 * stride + (i & 1) * 8 * XSTEP;
+            const u8* ptr_cbcr = result + 256 + cbcr_offset;
+            const u8* ptr_y = result + y_offset;
+            u8* ptr_dest = dest + dest_offset;
+
+            for (int y = 0; y < 4; ++y)
+            {
+                u8* scan = ptr_dest;
+
+                for (int x = 0; x < 4; ++x)
+                {
+                    u8 y0 = ptr_y[x * 2 + 0];
+                    u8 y1 = ptr_y[x * 2 + 1];
+                    u8 y2 = ptr_y[x * 2 + 8];
+                    u8 y3 = ptr_y[x * 2 + 9];
+                    u8 cb = ptr_cbcr[x + 0];
+                    u8 cr = ptr_cbcr[x + 64];
+
+                    int r, g, b;
+                    COMPUTE_CBCR(cb, cr);
+                    WRITE_COLOR(scan + 0 * XSTEP, y0, r, g, b);
+                    WRITE_COLOR(scan + 1 * XSTEP, y1, r, g, b);
+
+                    u8* next = scan + stride;
+                    scan += 2 * XSTEP;
+                    WRITE_COLOR(next + 0 * XSTEP, y2, r, g, b);
+                    WRITE_COLOR(next + 1 * XSTEP, y3, r, g, b);
+                }
+
+                ptr_dest += stride * 2;
+                ptr_y += 8 * 2;
+                ptr_cbcr += 8;
+            }
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+}
+
 // Generate YCBCR to BGRA functions
-#define WRITE_COLOR            write_color_bgra
-#define XSTEP                  4
-#define FUNCTION_GENERIC       process_ycbcr_bgra
-#define FUNCTION_YCBCR_8x8     process_ycbcr_bgra_8x8
-#define FUNCTION_YCBCR_8x16    process_ycbcr_bgra_8x16
-#define FUNCTION_YCBCR_16x8    process_ycbcr_bgra_16x8
-#define FUNCTION_YCBCR_16x16   process_ycbcr_bgra_16x16
-#include "jpeg_process_func.hpp"
-#undef WRITE_COLOR
-#undef XSTEP
-#undef FUNCTION_GENERIC
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_bgra(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_GENERIC(dest, stride, data, state, width, height,
+        4, write_color_bgra);
+}
+void process_ycbcr_bgra_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        4, write_color_bgra);
+}
+void process_ycbcr_bgra_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        4, write_color_bgra);
+}
+void process_ycbcr_bgra_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        4, write_color_bgra);
+}
+void process_ycbcr_bgra_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        4, write_color_bgra);
+}
 
 // Generate YCBCR to RGBA functions
-#define WRITE_COLOR            write_color_rgba
-#define XSTEP                  4
-#define FUNCTION_GENERIC       process_ycbcr_rgba
-#define FUNCTION_YCBCR_8x8     process_ycbcr_rgba_8x8
-#define FUNCTION_YCBCR_8x16    process_ycbcr_rgba_8x16
-#define FUNCTION_YCBCR_16x8    process_ycbcr_rgba_16x8
-#define FUNCTION_YCBCR_16x16   process_ycbcr_rgba_16x16
-#include "jpeg_process_func.hpp"
-#undef WRITE_COLOR
-#undef XSTEP
-#undef FUNCTION_GENERIC
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_rgba(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_GENERIC(dest, stride, data, state, width, height,
+        4, write_color_rgba);
+}
+void process_ycbcr_rgba_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        4, write_color_rgba);
+}
+void process_ycbcr_rgba_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        4, write_color_rgba);
+}
+void process_ycbcr_rgba_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        4, write_color_rgba);
+}
+void process_ycbcr_rgba_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        4, write_color_rgba);
+}
 
 // Generate YCBCR to BGR functions
-#define WRITE_COLOR            write_color_bgr
-#define XSTEP                  3
-#define FUNCTION_GENERIC       process_ycbcr_bgr
-#define FUNCTION_YCBCR_8x8     process_ycbcr_bgr_8x8
-#define FUNCTION_YCBCR_8x16    process_ycbcr_bgr_8x16
-#define FUNCTION_YCBCR_16x8    process_ycbcr_bgr_16x8
-#define FUNCTION_YCBCR_16x16   process_ycbcr_bgr_16x16
-#include "jpeg_process_func.hpp"
-#undef WRITE_COLOR
-#undef XSTEP
-#undef FUNCTION_GENERIC
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_bgr(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_GENERIC(dest, stride, data, state, width, height,
+        3, write_color_bgr);
+}
+void process_ycbcr_bgr_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        3, write_color_bgr);
+}
+void process_ycbcr_bgr_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        3, write_color_bgr);
+}
+void process_ycbcr_bgr_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        3, write_color_bgr);
+}
+void process_ycbcr_bgr_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        3, write_color_bgr);
+}
 
 // Generate YCBCR to RGB functions
-#define WRITE_COLOR            write_color_rgb
-#define XSTEP                  3
-#define FUNCTION_GENERIC       process_ycbcr_rgb
-#define FUNCTION_YCBCR_8x8     process_ycbcr_rgb_8x8
-#define FUNCTION_YCBCR_8x16    process_ycbcr_rgb_8x16
-#define FUNCTION_YCBCR_16x8    process_ycbcr_rgb_16x8
-#define FUNCTION_YCBCR_16x16   process_ycbcr_rgb_16x16
-#include "jpeg_process_func.hpp"
-#undef WRITE_COLOR
-#undef XSTEP
-#undef FUNCTION_GENERIC
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_rgb(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_GENERIC(dest, stride, data, state, width, height,
+        3, write_color_rgb);
+}
+void process_ycbcr_rgb_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        3, write_color_rgb);
+}
+void process_ycbcr_rgb_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        3, write_color_rgb);
+}
+void process_ycbcr_rgb_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        3, write_color_rgb);
+}
+void process_ycbcr_rgb_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::func::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        3, write_color_rgb);
+}
 
 #undef COMPUTE_CBCR
 
@@ -7799,65 +8062,236 @@ void convert_ycbcr_rgb_8x1_neon(u8* dest, int16x8_t y, int16x8_t cb, int16x8_t c
     vst3_u8(dest, packed);
 }
 
+namespace process::neon
+{
+    typedef void INNERLOOP_YCBCR_FUNC(u8*, int16x8_t, int16x8_t, int16x8_t, int16x8_t, int16x8_t, int16x8_t, int16x8_t);
+    void FUNCTION_YCBCR_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, INNERLOOP_YCBCR_FUNC * INNERLOOP_YCBCR)
+    {
+        u8 result[64 * 3];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y
+        state->idct(result +  64, data +  64, state->block[1].qt); // Cb
+        state->idct(result + 128, data + 128, state->block[2].qt); // Cr
+
+        const uint8x8_t tosigned = vdup_n_u8(0x80);
+        const int16x8_t s0 = vdupq_n_s16(JPEG_FIXED( 1.40200));
+        const int16x8_t s1 = vdupq_n_s16(JPEG_FIXED(-0.71414));
+        const int16x8_t s2 = vdupq_n_s16(JPEG_FIXED(-0.34414));
+        const int16x8_t s3 = vdupq_n_s16(JPEG_FIXED( 1.77200));
+
+        for (int y = 0; y < 8; ++y)
+        {
+            uint8x8_t u_y  = vld1_u8(result + y * 8 + 0);
+            uint8x8_t u_cb = vld1_u8(result + y * 8 + 64);
+            uint8x8_t u_cr = vld1_u8(result + y * 8 + 128);
+
+            int16x8_t s_y = vreinterpretq_s16_u16(vshll_n_u8(u_y, 4));
+            int16x8_t s_cb = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cb, tosigned)), 7);
+            int16x8_t s_cr = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cr, tosigned)), 7);
+
+            INNERLOOP_YCBCR(dest, s_y, s_cb, s_cr, s0, s1, s2, s3);
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+    void FUNCTION_YCBCR_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, INNERLOOP_YCBCR_FUNC * INNERLOOP_YCBCR)
+    {
+        u8 result[64 * 4];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y0
+        state->idct(result +  64, data +  64, state->block[1].qt); // Y1
+        state->idct(result + 128, data + 128, state->block[2].qt); // Cb
+        state->idct(result + 192, data + 192, state->block[3].qt); // Cr
+
+        const uint8x8_t tosigned = vdup_n_u8(0x80);
+        const int16x8_t s0 = vdupq_n_s16(JPEG_FIXED( 1.40200));
+        const int16x8_t s1 = vdupq_n_s16(JPEG_FIXED(-0.71414));
+        const int16x8_t s2 = vdupq_n_s16(JPEG_FIXED(-0.34414));
+        const int16x8_t s3 = vdupq_n_s16(JPEG_FIXED( 1.77200));
+
+        for (int y = 0; y < 8; ++y)
+        {
+            uint8x8_t u_y0 = vld1_u8(result + y * 16 + 0);
+            uint8x8_t u_y1 = vld1_u8(result + y * 16 + 8);
+            uint8x8_t u_cb = vld1_u8(result + y * 8 + 128);
+            uint8x8_t u_cr = vld1_u8(result + y * 8 + 192);
+
+            int16x8_t s_y0 = vreinterpretq_s16_u16(vshll_n_u8(u_y0, 4));
+            int16x8_t s_y1 = vreinterpretq_s16_u16(vshll_n_u8(u_y1, 4));
+            int16x8_t s_cb = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cb, tosigned)), 7);
+            int16x8_t s_cr = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cr, tosigned)), 7);
+
+            INNERLOOP_YCBCR(dest, s_y0, s_cb, s_cr, s0, s1, s2, s3);
+            dest += stride;
+
+            INNERLOOP_YCBCR(dest, s_y1, s_cb, s_cr, s0, s1, s2, s3);
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+    void FUNCTION_YCBCR_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, INNERLOOP_YCBCR_FUNC * INNERLOOP_YCBCR)
+    {
+        u8 result[64 * 4];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y0
+        state->idct(result +  64, data +  64, state->block[1].qt); // Y1
+        state->idct(result + 128, data + 128, state->block[2].qt); // Cb
+        state->idct(result + 192, data + 192, state->block[3].qt); // Cr
+
+        const uint8x8_t tosigned = vdup_n_u8(0x80);
+        const int16x8_t s0 = vdupq_n_s16(JPEG_FIXED( 1.40200));
+        const int16x8_t s1 = vdupq_n_s16(JPEG_FIXED(-0.71414));
+        const int16x8_t s2 = vdupq_n_s16(JPEG_FIXED(-0.34414));
+        const int16x8_t s3 = vdupq_n_s16(JPEG_FIXED( 1.77200));
+
+        for (int y = 0; y < 8; ++y)
+        {
+            uint8x8_t u_y0 = vld1_u8(result + y * 8 + 0);
+            uint8x8_t u_y1 = vld1_u8(result + y * 8 + 64);
+            uint8x8_t u_cb = vld1_u8(result + y * 8 + 128);
+            uint8x8_t u_cr = vld1_u8(result + y * 8 + 192);
+
+            int16x8_t s_y0 = vreinterpretq_s16_u16(vshll_n_u8(u_y0, 4));
+            int16x8_t s_y1 = vreinterpretq_s16_u16(vshll_n_u8(u_y1, 4));
+            int16x8_t s_cb = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cb, tosigned)), 7);
+            int16x8_t s_cr = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cr, tosigned)), 7);
+
+            int16x8x2_t w_cb = vzipq_s16(s_cb, s_cb);
+            int16x8x2_t w_cr = vzipq_s16(s_cr, s_cr);
+
+            INNERLOOP_YCBCR(dest + 0 * XSTEP, s_y0, w_cb.val[0], w_cr.val[0], s0, s1, s2, s3);
+            INNERLOOP_YCBCR(dest + 1 * XSTEP, s_y1, w_cb.val[1], w_cr.val[1], s0, s1, s2, s3);
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+    void FUNCTION_YCBCR_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, INNERLOOP_YCBCR_FUNC * INNERLOOP_YCBCR)
+    {
+        u8 result[64 * 6];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y0
+        state->idct(result + 128, data +  64, state->block[1].qt); // Y1
+        state->idct(result +  64, data + 128, state->block[2].qt); // Y2
+        state->idct(result + 192, data + 192, state->block[3].qt); // Y3
+        state->idct(result + 256, data + 256, state->block[4].qt); // Cb
+        state->idct(result + 320, data + 320, state->block[5].qt); // Cr
+
+        const uint8x8_t tosigned = vdup_n_u8(0x80);
+        const int16x8_t s0 = vdupq_n_s16(JPEG_FIXED( 1.40200));
+        const int16x8_t s1 = vdupq_n_s16(JPEG_FIXED(-0.71414));
+        const int16x8_t s2 = vdupq_n_s16(JPEG_FIXED(-0.34414));
+        const int16x8_t s3 = vdupq_n_s16(JPEG_FIXED( 1.77200));
+
+        for (int y = 0; y < 8; ++y)
+        {
+            uint8x8_t u_y0 = vld1_u8(result + y * 16 + 0);
+            uint8x8_t u_y1 = vld1_u8(result + y * 16 + 128);
+            uint8x8_t u_y2 = vld1_u8(result + y * 16 + 8);
+            uint8x8_t u_y3 = vld1_u8(result + y * 16 + 136);
+            uint8x8_t u_cb = vld1_u8(result + y * 8 + 256);
+            uint8x8_t u_cr = vld1_u8(result + y * 8 + 320);
+
+            int16x8_t s_y0 = vreinterpretq_s16_u16(vshll_n_u8(u_y0, 4));
+            int16x8_t s_y1 = vreinterpretq_s16_u16(vshll_n_u8(u_y1, 4));
+            int16x8_t s_y2 = vreinterpretq_s16_u16(vshll_n_u8(u_y2, 4));
+            int16x8_t s_y3 = vreinterpretq_s16_u16(vshll_n_u8(u_y3, 4));
+            int16x8_t s_cb = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cb, tosigned)), 7);
+            int16x8_t s_cr = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cr, tosigned)), 7);
+
+            int16x8x2_t w_cb = vzipq_s16(s_cb, s_cb);
+            int16x8x2_t w_cr = vzipq_s16(s_cr, s_cr);
+
+            INNERLOOP_YCBCR(dest + 0 * XSTEP, s_y0, w_cb.val[0], w_cr.val[0], s0, s1, s2, s3);
+            INNERLOOP_YCBCR(dest + 1 * XSTEP, s_y1, w_cb.val[1], w_cr.val[1], s0, s1, s2, s3);
+            dest += stride;
+
+            INNERLOOP_YCBCR(dest + 0 * XSTEP, s_y2, w_cb.val[0], w_cr.val[0], s0, s1, s2, s3);
+            INNERLOOP_YCBCR(dest + 1 * XSTEP, s_y3, w_cb.val[1], w_cr.val[1], s0, s1, s2, s3);
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+}
+
 // Generate YCBCR to BGRA functions
-#define INNERLOOP_YCBCR      convert_ycbcr_bgra_8x1_neon
-#define XSTEP                32
-#define FUNCTION_YCBCR_8x8   process_ycbcr_bgra_8x8_neon
-#define FUNCTION_YCBCR_8x16  process_ycbcr_bgra_8x16_neon
-#define FUNCTION_YCBCR_16x8  process_ycbcr_bgra_16x8_neon
-#define FUNCTION_YCBCR_16x16 process_ycbcr_bgra_16x16_neon
-#include "jpeg_process_neon.hpp"
-#undef INNERLOOP_YCBCR
-#undef XSTEP
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_bgra_8x8_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        32, convert_ycbcr_bgra_8x1_neon);
+}
+void process_ycbcr_bgra_8x16_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        32, convert_ycbcr_bgra_8x1_neon);
+}
+void process_ycbcr_bgra_16x8_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        32, convert_ycbcr_bgra_8x1_neon);
+}
+void process_ycbcr_bgra_16x16_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        32, convert_ycbcr_bgra_8x1_neon);
+}
 
 // Generate YCBCR to RGBA functions
-#define INNERLOOP_YCBCR      convert_ycbcr_rgba_8x1_neon
-#define XSTEP                32
-#define FUNCTION_YCBCR_8x8   process_ycbcr_rgba_8x8_neon
-#define FUNCTION_YCBCR_8x16  process_ycbcr_rgba_8x16_neon
-#define FUNCTION_YCBCR_16x8  process_ycbcr_rgba_16x8_neon
-#define FUNCTION_YCBCR_16x16 process_ycbcr_rgba_16x16_neon
-#include "jpeg_process_neon.hpp"
-#undef INNERLOOP_YCBCR
-#undef XSTEP
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_rgba_8x8_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        32, convert_ycbcr_rgba_8x1_neon);
+}
+void process_ycbcr_rgba_8x16_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        32, convert_ycbcr_rgba_8x1_neon);
+}
+void process_ycbcr_rgba_16x8_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        32, convert_ycbcr_rgba_8x1_neon);
+}
+void process_ycbcr_rgba_16x16_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        32, convert_ycbcr_rgba_8x1_neon);
+}
 
 // Generate YCBCR to BGR functions
-#define INNERLOOP_YCBCR      convert_ycbcr_bgr_8x1_neon
-#define XSTEP                24
-#define FUNCTION_YCBCR_8x8   process_ycbcr_bgr_8x8_neon
-#define FUNCTION_YCBCR_8x16  process_ycbcr_bgr_8x16_neon
-#define FUNCTION_YCBCR_16x8  process_ycbcr_bgr_16x8_neon
-#define FUNCTION_YCBCR_16x16 process_ycbcr_bgr_16x16_neon
-#include "jpeg_process_neon.hpp"
-#undef INNERLOOP_YCBCR
-#undef XSTEP
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_bgr_8x8_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        24, convert_ycbcr_bgr_8x1_neon);
+}
+void process_ycbcr_bgr_8x16_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        24, convert_ycbcr_bgr_8x1_neon);
+}
+void process_ycbcr_bgr_16x8_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        24, convert_ycbcr_bgr_8x1_neon);
+}
+void process_ycbcr_bgr_16x16_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        24, convert_ycbcr_bgr_8x1_neon);
+}
 
 // Generate YCBCR to RGB functions
-#define INNERLOOP_YCBCR      convert_ycbcr_rgb_8x1_neon
-#define XSTEP                24
-#define FUNCTION_YCBCR_8x8   process_ycbcr_rgb_8x8_neon
-#define FUNCTION_YCBCR_8x16  process_ycbcr_rgb_8x16_neon
-#define FUNCTION_YCBCR_16x8  process_ycbcr_rgb_16x8_neon
-#define FUNCTION_YCBCR_16x16 process_ycbcr_rgb_16x16_neon
-#include "jpeg_process_neon.hpp"
-#undef INNERLOOP_YCBCR
-#undef XSTEP
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_rgb_8x8_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        24, convert_ycbcr_rgb_8x1_neon);
+}
+void process_ycbcr_rgb_8x16_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        24, convert_ycbcr_rgb_8x1_neon);
+}
+void process_ycbcr_rgb_16x8_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        24, convert_ycbcr_rgb_8x1_neon);
+}
+void process_ycbcr_rgb_16x16_neon(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::neon::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        24, convert_ycbcr_rgb_8x1_neon);
+}
 
 #endif // MANGO_ENABLE_NEON
 
@@ -7986,35 +8420,286 @@ void convert_ycbcr_rgba_8x1_sse2(u8* dest, __m128i y, __m128i cb, __m128i cr, __
     _mm_storeu_si128(reinterpret_cast<__m128i *>(dest + 16), rgba1);
 }
 
+namespace process::sse
+{
+    typedef void INNERLOOP_YCBCR_FUNC(u8*, __m128i, __m128i, __m128i, __m128i, __m128i, __m128i, __m128i);
+    void FUNCTION_YCBCR_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, INNERLOOP_YCBCR_FUNC * INNERLOOP_YCBCR)
+    {
+        u8 result[64 * 3];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y
+        state->idct(result +  64, data +  64, state->block[1].qt); // Cb
+        state->idct(result + 128, data + 128, state->block[2].qt); // Cr
+
+        // color conversion
+        const __m128i s0 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.40200));
+        const __m128i s1 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.77200));
+        const __m128i s2 = JPEG_CONST_SSE2(JPEG_FIXED(-0.34414), JPEG_FIXED(-0.71414));
+        const __m128i rounding = _mm_set1_epi32(1 << (JPEG_PREC - 1));
+        const __m128i tosigned = _mm_set1_epi16(-128);
+
+        for (int y = 0; y < 4; ++y)
+        {
+            __m128i yy = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 0));
+            __m128i cb = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 64));
+            __m128i cr = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 128));
+
+            __m128i zero = _mm_setzero_si128();
+
+            __m128i cb0 = _mm_unpacklo_epi8(cb, zero);
+            __m128i cr0 = _mm_unpacklo_epi8(cr, zero);
+            __m128i cb1 = _mm_unpackhi_epi8(cb, zero);
+            __m128i cr1 = _mm_unpackhi_epi8(cr, zero);
+
+            cb0 = _mm_add_epi16(cb0, tosigned);
+            cr0 = _mm_add_epi16(cr0, tosigned);
+            cb1 = _mm_add_epi16(cb1, tosigned);
+            cr1 = _mm_add_epi16(cr1, tosigned);
+
+            INNERLOOP_YCBCR(dest, _mm_unpacklo_epi8(yy, zero), cb0, cr0, s0, s1, s2, rounding);
+            dest += stride;
+
+            INNERLOOP_YCBCR(dest, _mm_unpackhi_epi8(yy, zero), cb1, cr1, s0, s1, s2, rounding);
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+    void FUNCTION_YCBCR_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, INNERLOOP_YCBCR_FUNC * INNERLOOP_YCBCR)
+    {
+        u8 result[64 * 4];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y0
+        state->idct(result +  64, data +  64, state->block[1].qt); // Y1
+        state->idct(result + 128, data + 128, state->block[2].qt); // Cb
+        state->idct(result + 192, data + 192, state->block[3].qt); // Cr
+
+        // color conversion
+        const __m128i s0 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.40200));
+        const __m128i s1 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.77200));
+        const __m128i s2 = JPEG_CONST_SSE2(JPEG_FIXED(-0.34414), JPEG_FIXED(-0.71414));
+        const __m128i rounding = _mm_set1_epi32(1 << (JPEG_PREC - 1));
+        const __m128i tosigned = _mm_set1_epi16(-128);
+
+        for (int y = 0; y < 4; ++y)
+        {
+            __m128i y0 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 0));
+            __m128i y1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 16));
+            __m128i cb = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 128));
+            __m128i cr = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 192));
+
+            __m128i zero = _mm_setzero_si128();
+
+            __m128i cb0 = _mm_unpacklo_epi8(cb, zero);
+            __m128i cr0 = _mm_unpacklo_epi8(cr, zero);
+            __m128i cb1 = _mm_unpackhi_epi8(cb, zero);
+            __m128i cr1 = _mm_unpackhi_epi8(cr, zero);
+
+            cb0 = _mm_add_epi16(cb0, tosigned);
+            cr0 = _mm_add_epi16(cr0, tosigned);
+            cb1 = _mm_add_epi16(cb1, tosigned);
+            cr1 = _mm_add_epi16(cr1, tosigned);
+
+            INNERLOOP_YCBCR(dest, _mm_unpacklo_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
+            dest += stride;
+
+            INNERLOOP_YCBCR(dest, _mm_unpackhi_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
+            dest += stride;
+
+            INNERLOOP_YCBCR(dest, _mm_unpacklo_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
+            dest += stride;
+
+            INNERLOOP_YCBCR(dest, _mm_unpackhi_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+    void FUNCTION_YCBCR_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, INNERLOOP_YCBCR_FUNC * INNERLOOP_YCBCR)
+    {
+        u8 result[64 * 4];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y0
+        state->idct(result +  64, data +  64, state->block[1].qt); // Y1
+        state->idct(result + 128, data + 128, state->block[2].qt); // Cb
+        state->idct(result + 192, data + 192, state->block[3].qt); // Cr
+
+        // color conversion
+        const __m128i s0 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.40200));
+        const __m128i s1 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.77200));
+        const __m128i s2 = JPEG_CONST_SSE2(JPEG_FIXED(-0.34414), JPEG_FIXED(-0.71414));
+        const __m128i rounding = _mm_set1_epi32(1 << (JPEG_PREC - 1));
+        const __m128i tosigned = _mm_set1_epi16(-128);
+
+        for (int y = 0; y < 4; ++y)
+        {
+            __m128i y0 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 0));
+            __m128i y1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 64));
+            __m128i cb = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 128));
+            __m128i cr = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 192));
+
+            __m128i zero = _mm_setzero_si128();
+            __m128i cb0;
+            __m128i cb1;
+            __m128i cr0;
+            __m128i cr1;
+
+            cb0 = _mm_unpacklo_epi8(cb, cb);
+            cr0 = _mm_unpacklo_epi8(cr, cr);
+
+            cb1 = _mm_unpackhi_epi8(cb0, zero);
+            cr1 = _mm_unpackhi_epi8(cr0, zero);
+            cb0 = _mm_unpacklo_epi8(cb0, zero);
+            cr0 = _mm_unpacklo_epi8(cr0, zero);
+
+            cb0 = _mm_add_epi16(cb0, tosigned);
+            cr0 = _mm_add_epi16(cr0, tosigned);
+            cb1 = _mm_add_epi16(cb1, tosigned);
+            cr1 = _mm_add_epi16(cr1, tosigned);
+
+            INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpacklo_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
+            INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpacklo_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
+            dest += stride;
+
+            cb0 = _mm_unpackhi_epi8(cb, cb);
+            cr0 = _mm_unpackhi_epi8(cr, cr);
+
+            cb1 = _mm_unpackhi_epi8(cb0, zero);
+            cr1 = _mm_unpackhi_epi8(cr0, zero);
+            cb0 = _mm_unpacklo_epi8(cb0, zero);
+            cr0 = _mm_unpacklo_epi8(cr0, zero);
+
+            cb0 = _mm_add_epi16(cb0, tosigned);
+            cr0 = _mm_add_epi16(cr0, tosigned);
+            cb1 = _mm_add_epi16(cb1, tosigned);
+            cr1 = _mm_add_epi16(cr1, tosigned);
+
+            INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpackhi_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
+            INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpackhi_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+    void FUNCTION_YCBCR_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height, const int XSTEP, INNERLOOP_YCBCR_FUNC * INNERLOOP_YCBCR)
+    {
+        u8 result[64 * 6];
+
+        state->idct(result +   0, data +   0, state->block[0].qt); // Y0
+        state->idct(result + 128, data +  64, state->block[1].qt); // Y1
+        state->idct(result +  64, data + 128, state->block[2].qt); // Y2
+        state->idct(result + 192, data + 192, state->block[3].qt); // Y3
+        state->idct(result + 256, data + 256, state->block[4].qt); // Cb
+        state->idct(result + 320, data + 320, state->block[5].qt); // Cr
+
+        // color conversion
+        const __m128i s0 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.40200));
+        const __m128i s1 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.77200));
+        const __m128i s2 = JPEG_CONST_SSE2(JPEG_FIXED(-0.34414), JPEG_FIXED(-0.71414));
+        const __m128i rounding = _mm_set1_epi32(1 << (JPEG_PREC - 1));
+        const __m128i tosigned = _mm_set1_epi16(-128);
+
+        for (int y = 0; y < 4; ++y)
+        {
+            __m128i y0 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 0));
+            __m128i y1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 128));
+            __m128i y2 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 16));
+            __m128i y3 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 144));
+            __m128i cb = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 256));
+            __m128i cr = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 320));
+
+            __m128i zero = _mm_setzero_si128();
+            __m128i cb0;
+            __m128i cb1;
+            __m128i cr0;
+            __m128i cr1;
+
+            cb0 = _mm_unpacklo_epi8(cb, cb);
+            cr0 = _mm_unpacklo_epi8(cr, cr);
+
+            cb1 = _mm_unpackhi_epi8(cb0, zero);
+            cr1 = _mm_unpackhi_epi8(cr0, zero);
+            cb0 = _mm_unpacklo_epi8(cb0, zero);
+            cr0 = _mm_unpacklo_epi8(cr0, zero);
+
+            cb0 = _mm_add_epi16(cb0, tosigned);
+            cr0 = _mm_add_epi16(cr0, tosigned);
+            cb1 = _mm_add_epi16(cb1, tosigned);
+            cr1 = _mm_add_epi16(cr1, tosigned);
+
+            INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpacklo_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
+            INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpacklo_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
+            dest += stride;
+
+            INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpackhi_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
+            INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpackhi_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
+            dest += stride;
+
+            cb0 = _mm_unpackhi_epi8(cb, cb);
+            cr0 = _mm_unpackhi_epi8(cr, cr);
+
+            cb1 = _mm_unpackhi_epi8(cb0, zero);
+            cr1 = _mm_unpackhi_epi8(cr0, zero);
+            cb0 = _mm_unpacklo_epi8(cb0, zero);
+            cr0 = _mm_unpacklo_epi8(cr0, zero);
+
+            cb0 = _mm_add_epi16(cb0, tosigned);
+            cr0 = _mm_add_epi16(cr0, tosigned);
+            cb1 = _mm_add_epi16(cb1, tosigned);
+            cr1 = _mm_add_epi16(cr1, tosigned);
+
+            INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpacklo_epi8(y2, zero), cb0, cr0, s0, s1, s2, rounding);
+            INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpacklo_epi8(y3, zero), cb1, cr1, s0, s1, s2, rounding);
+            dest += stride;
+
+            INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpackhi_epi8(y2, zero), cb0, cr0, s0, s1, s2, rounding);
+            INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpackhi_epi8(y3, zero), cb1, cr1, s0, s1, s2, rounding);
+            dest += stride;
+        }
+
+        MANGO_UNREFERENCED(width);
+        MANGO_UNREFERENCED(height);
+    }
+}
+
 // Generate YCBCR to BGRA functions
-#define INNERLOOP_YCBCR      convert_ycbcr_bgra_8x1_sse2
-#define XSTEP                32
-#define FUNCTION_YCBCR_8x8   process_ycbcr_bgra_8x8_sse2
-#define FUNCTION_YCBCR_8x16  process_ycbcr_bgra_8x16_sse2
-#define FUNCTION_YCBCR_16x8  process_ycbcr_bgra_16x8_sse2
-#define FUNCTION_YCBCR_16x16 process_ycbcr_bgra_16x16_sse2
-#include "jpeg_process_sse2.hpp"
-#undef INNERLOOP_YCBCR
-#undef XSTEP
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_bgra_8x8_sse2(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        32, convert_ycbcr_bgra_8x1_sse2);
+}
+void process_ycbcr_bgra_8x16_sse2(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        32, convert_ycbcr_bgra_8x1_sse2);
+}
+void process_ycbcr_bgra_16x8_sse2(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        32, convert_ycbcr_bgra_8x1_sse2);
+}
+void process_ycbcr_bgra_16x16_sse2(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        32, convert_ycbcr_bgra_8x1_sse2);
+}
 
 // Generate YCBCR to RGBA functions
-#define INNERLOOP_YCBCR      convert_ycbcr_rgba_8x1_sse2
-#define XSTEP                32
-#define FUNCTION_YCBCR_8x8   process_ycbcr_rgba_8x8_sse2
-#define FUNCTION_YCBCR_8x16  process_ycbcr_rgba_8x16_sse2
-#define FUNCTION_YCBCR_16x8  process_ycbcr_rgba_16x8_sse2
-#define FUNCTION_YCBCR_16x16 process_ycbcr_rgba_16x16_sse2
-#include "jpeg_process_sse2.hpp"
-#undef INNERLOOP_YCBCR
-#undef XSTEP
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_rgba_8x8_sse2(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        32, convert_ycbcr_rgba_8x1_sse2);
+}
+void process_ycbcr_rgba_8x16_sse2(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        32, convert_ycbcr_rgba_8x1_sse2);
+}
+void process_ycbcr_rgba_16x8_sse2(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        32, convert_ycbcr_rgba_8x1_sse2);
+}
+void process_ycbcr_rgba_16x16_sse2(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        32, convert_ycbcr_rgba_8x1_sse2);
+}
 
 #endif // MANGO_ENABLE_SSE2
 
@@ -8137,717 +8822,41 @@ void convert_ycbcr_rgb_8x1_ssse3(u8* dest, __m128i y, __m128i cb, __m128i cr, __
 }
 
 // Generate YCBCR to BGR functions
-#define INNERLOOP_YCBCR      convert_ycbcr_bgr_8x1_ssse3
-#define XSTEP                24
-#define FUNCTION_YCBCR_8x8   process_ycbcr_bgr_8x8_ssse3
-#define FUNCTION_YCBCR_8x16  process_ycbcr_bgr_8x16_ssse3
-#define FUNCTION_YCBCR_16x8  process_ycbcr_bgr_16x8_ssse3
-#define FUNCTION_YCBCR_16x16 process_ycbcr_bgr_16x16_ssse3
-#include "jpeg_process_sse2.hpp"
-#undef INNERLOOP_YCBCR
-#undef XSTEP
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
+void process_ycbcr_bgr_8x8_ssse3(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        24, convert_ycbcr_bgr_8x1_ssse3);
+}
+void process_ycbcr_bgr_8x16_ssse3(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        24, convert_ycbcr_bgr_8x1_ssse3);
+}
+void process_ycbcr_bgr_16x8_ssse3(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        24, convert_ycbcr_bgr_8x1_ssse3);
+}
+void process_ycbcr_bgr_16x16_ssse3(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        24, convert_ycbcr_bgr_8x1_ssse3);
+}
 
 // Generate YCBCR to RGB functions
-#define INNERLOOP_YCBCR      convert_ycbcr_rgb_8x1_ssse3
-#define XSTEP                24
-#define FUNCTION_YCBCR_8x8   process_ycbcr_rgb_8x8_ssse3
-#define FUNCTION_YCBCR_8x16  process_ycbcr_rgb_8x16_ssse3
-#define FUNCTION_YCBCR_16x8  process_ycbcr_rgb_16x8_ssse3
-#define FUNCTION_YCBCR_16x16 process_ycbcr_rgb_16x16_ssse3
-#include "jpeg_process_sse2.hpp"
-#undef INNERLOOP_YCBCR
-#undef XSTEP
-#undef FUNCTION_YCBCR_8x8
-#undef FUNCTION_YCBCR_8x16
-#undef FUNCTION_YCBCR_16x8
-#undef FUNCTION_YCBCR_16x16
-
+void process_ycbcr_rgb_8x8_ssse3(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_8x8(dest, stride, data, state, width, height,
+        24, convert_ycbcr_rgb_8x1_ssse3);
+}
+void process_ycbcr_rgb_8x16_ssse3(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_8x16(dest, stride, data, state, width, height,
+        24, convert_ycbcr_rgb_8x1_ssse3);
+}
+void process_ycbcr_rgb_16x8_ssse3(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_16x8(dest, stride, data, state, width, height,
+        24, convert_ycbcr_rgb_8x1_ssse3);
+}
+void process_ycbcr_rgb_16x16_ssse3(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height) {
+    return process::sse::FUNCTION_YCBCR_16x16(dest, stride, data, state, width, height,
+        24, convert_ycbcr_rgb_8x1_ssse3);
+}
 #endif // MANGO_ENABLE_SSE4_1
 
 } // namespace mango::jpeg
-
-//      func
-// ----------------------------------------------------------------------------
-
-#ifdef FUNCTION_GENERIC
-void FUNCTION_GENERIC(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[JPEG_MAX_SAMPLES_IN_MCU];
-
-    for (int i = 0; i < state->blocks; ++i)
-    {
-        Block& block = state->block[i];
-        state->idct(result + i * 64, data, block.qt);
-        data += 64;
-    }
-
-    // MCU size in blocks
-    int xsize = (width + 7) / 8;
-    int ysize = (height + 7) / 8;
-
-    int cb_offset = state->frame[1].offset * 64;
-    int cb_xshift = state->frame[1].Hsf;
-    int cb_yshift = state->frame[1].Vsf;
-
-    int cr_offset = state->frame[2].offset * 64;
-    int cr_xshift = state->frame[2].Hsf;
-    int cr_yshift = state->frame[2].Vsf;
-
-    u8* cb_data = result + cb_offset;
-    u8* cr_data = result + cr_offset;
-
-    // process MCU
-    for (int yb = 0; yb < ysize; ++yb)
-    {
-        // vertical clipping limit for current block
-        const int ymax = std::min(8, height - yb * 8);
-
-        for (int xb = 0; xb < xsize; ++xb)
-        {
-            u8* dest_block = dest + yb * 8 * stride + xb * 8 * XSTEP;
-            u8* y_block = result + (yb * xsize + xb) * 64;
-            u8* cb_block = cb_data + yb * (8 >> cb_yshift) * 8 + xb * (8 >> cb_xshift);
-            u8* cr_block = cr_data + yb * (8 >> cr_yshift) * 8 + xb * (8 >> cr_xshift);
-
-            // horizontal clipping limit for current block
-            const int xmax = std::min(8, width - xb * 8);
-
-            // process 8x8 block
-            for (int y = 0; y < ymax; ++y)
-            {
-                u8* d = dest_block;
-                u8* cb_scan = cb_block + (y >> cb_yshift) * 8;
-                u8* cr_scan = cr_block + (y >> cr_yshift) * 8;
-
-                for (int x = 0; x < xmax; ++x)
-                {
-                    u8 y0 = y_block[x];
-                    u8 cb = cb_scan[x >> cb_xshift];
-                    u8 cr = cr_scan[x >> cr_xshift];
-                    int r, g, b;
-                    COMPUTE_CBCR(cb, cr);
-                    WRITE_COLOR(d, y0, r, g, b);
-                    d += XSTEP;
-                }
-
-                dest_block += stride;
-                y_block += 8;
-            }
-        }
-    }
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_8x8
-void FUNCTION_YCBCR_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 3];
-
-    state->idct(result + 64 * 0, data + 64 * 0, state->block[0].qt); // Y
-    state->idct(result + 64 * 1, data + 64 * 1, state->block[1].qt); // Cb
-    state->idct(result + 64 * 2, data + 64 * 2, state->block[2].qt); // Cr
-
-    // color conversion
-    const u8* src = result;
-
-    for (int y = 0; y < 8; ++y)
-    {
-        const u8* s = src + y * 8;
-        u8* d = dest;
-
-        for (int x = 0; x < 8; ++x)
-        {
-            int y0 = s[x];
-            int cb = s[x + 64];
-            int cr = s[x + 128];
-            int r, g, b;
-            COMPUTE_CBCR(cb, cr);
-            WRITE_COLOR(d, y0, r, g, b);
-            d += XSTEP;
-        }
-
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_8x16
-void FUNCTION_YCBCR_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 4];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y0
-    state->idct(result +  64, data +  64, state->block[1].qt); // Y1
-    state->idct(result + 128, data + 128, state->block[2].qt); // Cb
-    state->idct(result + 192, data + 192, state->block[3].qt); // Cr
-
-    // color conversion
-    for (int y = 0; y < 8; ++y)
-    {
-        u8* d0 = dest;
-        u8* d1 = dest + stride;
-        const u8* s = result + y * 16;
-        const u8* c = result + y * 8 + 128;
-
-        for (int x = 0; x < 8; ++x)
-        {
-            int y0 = s[x + 0];
-            int y1 = s[x + 8];
-            int cb = c[x + 0];
-            int cr = c[x + 64];
-            int r, g, b;
-            COMPUTE_CBCR(cb, cr);
-            WRITE_COLOR(d0, y0, r, g, b);
-            WRITE_COLOR(d1, y1, r, g, b);
-            d0 += XSTEP;
-            d1 += XSTEP;
-        }
-
-        dest += stride * 2;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_16x8
-void FUNCTION_YCBCR_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 4];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y0
-    state->idct(result +  64, data +  64, state->block[1].qt); // Y1
-    state->idct(result + 128, data + 128, state->block[2].qt); // Cb
-    state->idct(result + 192, data + 192, state->block[3].qt); // Cr
-
-    // color conversion
-    for (int y = 0; y < 8; ++y)
-    {
-        u8* d = dest;
-        u8* s = result + y * 8;
-        u8* c = result + y * 8 + 128;
-
-        for (int x = 0; x < 4; ++x)
-        {
-            int y0 = s[x * 2 + 0];
-            int y1 = s[x * 2 + 1];
-            int cb = c[x + 0];
-            int cr = c[x + 64];
-            int r, g, b;
-            COMPUTE_CBCR(cb, cr);
-            WRITE_COLOR(d + 0 * XSTEP, y0, r, g, b);
-            WRITE_COLOR(d + 1 * XSTEP, y1, r, g, b);
-            d += 2 * XSTEP;
-        }
-
-        for (int x = 0; x < 4; ++x)
-        {
-            int y0 = s[x * 2 + 64];
-            int y1 = s[x * 2 + 65];
-            int cb = c[x + 4];
-            int cr = c[x + 68];
-            int r, g, b;
-            COMPUTE_CBCR(cb, cr);
-            WRITE_COLOR(d + 0 * XSTEP, y0, r, g, b);
-            WRITE_COLOR(d + 1 * XSTEP, y1, r, g, b);
-            d += 2 * XSTEP;
-        }
-
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_16x16
-void FUNCTION_YCBCR_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 6];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y0
-    state->idct(result +  64, data +  64, state->block[1].qt); // Y1
-    state->idct(result + 128, data + 128, state->block[2].qt); // Y2
-    state->idct(result + 192, data + 192, state->block[3].qt); // Y3
-    state->idct(result + 256, data + 256, state->block[4].qt); // Cb
-    state->idct(result + 320, data + 320, state->block[5].qt); // Cr
-
-    // color conversion
-    for (int i = 0; i < 4; ++i)
-    {
-        int cbcr_offset = (i & 1) * 4 + (i >> 1) * 32;
-        int y_offset = i * 64;
-        size_t dest_offset = (i >> 1) * 8 * stride + (i & 1) * 8 * XSTEP;
-        const u8* ptr_cbcr = result + 256 + cbcr_offset;
-        const u8* ptr_y = result + y_offset;
-        u8* ptr_dest = dest + dest_offset;
-
-        for (int y = 0; y < 4; ++y)
-        {
-            u8* scan = ptr_dest;
-
-            for (int x = 0; x < 4; ++x)
-            {
-                u8 y0 = ptr_y[x * 2 + 0];
-                u8 y1 = ptr_y[x * 2 + 1];
-                u8 y2 = ptr_y[x * 2 + 8];
-                u8 y3 = ptr_y[x * 2 + 9];
-                u8 cb = ptr_cbcr[x + 0];
-                u8 cr = ptr_cbcr[x + 64];
-
-                int r, g, b;
-                COMPUTE_CBCR(cb, cr);
-                WRITE_COLOR(scan + 0 * XSTEP, y0, r, g, b);
-                WRITE_COLOR(scan + 1 * XSTEP, y1, r, g, b);
-
-                u8* next = scan + stride;
-                scan += 2 * XSTEP;
-                WRITE_COLOR(next + 0 * XSTEP, y2, r, g, b);
-                WRITE_COLOR(next + 1 * XSTEP, y3, r, g, b);
-            }
-
-            ptr_dest += stride * 2;
-            ptr_y += 8 * 2;
-            ptr_cbcr += 8;
-        }
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-//      neon
-// ----------------------------------------------------------------------------
-
-#ifdef FUNCTION_YCBCR_8x8
-void FUNCTION_YCBCR_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 3];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y
-    state->idct(result +  64, data +  64, state->block[1].qt); // Cb
-    state->idct(result + 128, data + 128, state->block[2].qt); // Cr
-
-    const uint8x8_t tosigned = vdup_n_u8(0x80);
-    const int16x8_t s0 = vdupq_n_s16(JPEG_FIXED( 1.40200));
-    const int16x8_t s1 = vdupq_n_s16(JPEG_FIXED(-0.71414));
-    const int16x8_t s2 = vdupq_n_s16(JPEG_FIXED(-0.34414));
-    const int16x8_t s3 = vdupq_n_s16(JPEG_FIXED( 1.77200));
-
-    for (int y = 0; y < 8; ++y)
-    {
-        uint8x8_t u_y  = vld1_u8(result + y * 8 + 0);
-        uint8x8_t u_cb = vld1_u8(result + y * 8 + 64);
-        uint8x8_t u_cr = vld1_u8(result + y * 8 + 128);
-
-        int16x8_t s_y = vreinterpretq_s16_u16(vshll_n_u8(u_y, 4));
-        int16x8_t s_cb = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cb, tosigned)), 7);
-        int16x8_t s_cr = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cr, tosigned)), 7);
-
-        INNERLOOP_YCBCR(dest, s_y, s_cb, s_cr, s0, s1, s2, s3);
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_8x16
-void FUNCTION_YCBCR_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 4];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y0
-    state->idct(result +  64, data +  64, state->block[1].qt); // Y1
-    state->idct(result + 128, data + 128, state->block[2].qt); // Cb
-    state->idct(result + 192, data + 192, state->block[3].qt); // Cr
-
-    const uint8x8_t tosigned = vdup_n_u8(0x80);
-    const int16x8_t s0 = vdupq_n_s16(JPEG_FIXED( 1.40200));
-    const int16x8_t s1 = vdupq_n_s16(JPEG_FIXED(-0.71414));
-    const int16x8_t s2 = vdupq_n_s16(JPEG_FIXED(-0.34414));
-    const int16x8_t s3 = vdupq_n_s16(JPEG_FIXED( 1.77200));
-
-    for (int y = 0; y < 8; ++y)
-    {
-        uint8x8_t u_y0 = vld1_u8(result + y * 16 + 0);
-        uint8x8_t u_y1 = vld1_u8(result + y * 16 + 8);
-        uint8x8_t u_cb = vld1_u8(result + y * 8 + 128);
-        uint8x8_t u_cr = vld1_u8(result + y * 8 + 192);
-
-        int16x8_t s_y0 = vreinterpretq_s16_u16(vshll_n_u8(u_y0, 4));
-        int16x8_t s_y1 = vreinterpretq_s16_u16(vshll_n_u8(u_y1, 4));
-        int16x8_t s_cb = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cb, tosigned)), 7);
-        int16x8_t s_cr = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cr, tosigned)), 7);
-
-        INNERLOOP_YCBCR(dest, s_y0, s_cb, s_cr, s0, s1, s2, s3);
-        dest += stride;
-
-        INNERLOOP_YCBCR(dest, s_y1, s_cb, s_cr, s0, s1, s2, s3);
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_16x8
-void FUNCTION_YCBCR_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 4];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y0
-    state->idct(result +  64, data +  64, state->block[1].qt); // Y1
-    state->idct(result + 128, data + 128, state->block[2].qt); // Cb
-    state->idct(result + 192, data + 192, state->block[3].qt); // Cr
-
-    const uint8x8_t tosigned = vdup_n_u8(0x80);
-    const int16x8_t s0 = vdupq_n_s16(JPEG_FIXED( 1.40200));
-    const int16x8_t s1 = vdupq_n_s16(JPEG_FIXED(-0.71414));
-    const int16x8_t s2 = vdupq_n_s16(JPEG_FIXED(-0.34414));
-    const int16x8_t s3 = vdupq_n_s16(JPEG_FIXED( 1.77200));
-
-    for (int y = 0; y < 8; ++y)
-    {
-        uint8x8_t u_y0 = vld1_u8(result + y * 8 + 0);
-        uint8x8_t u_y1 = vld1_u8(result + y * 8 + 64);
-        uint8x8_t u_cb = vld1_u8(result + y * 8 + 128);
-        uint8x8_t u_cr = vld1_u8(result + y * 8 + 192);
-
-        int16x8_t s_y0 = vreinterpretq_s16_u16(vshll_n_u8(u_y0, 4));
-        int16x8_t s_y1 = vreinterpretq_s16_u16(vshll_n_u8(u_y1, 4));
-        int16x8_t s_cb = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cb, tosigned)), 7);
-        int16x8_t s_cr = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cr, tosigned)), 7);
-
-        int16x8x2_t w_cb = vzipq_s16(s_cb, s_cb);
-        int16x8x2_t w_cr = vzipq_s16(s_cr, s_cr);
-
-        INNERLOOP_YCBCR(dest + 0 * XSTEP, s_y0, w_cb.val[0], w_cr.val[0], s0, s1, s2, s3);
-        INNERLOOP_YCBCR(dest + 1 * XSTEP, s_y1, w_cb.val[1], w_cr.val[1], s0, s1, s2, s3);
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_16x16
-void FUNCTION_YCBCR_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 6];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y0
-    state->idct(result + 128, data +  64, state->block[1].qt); // Y1
-    state->idct(result +  64, data + 128, state->block[2].qt); // Y2
-    state->idct(result + 192, data + 192, state->block[3].qt); // Y3
-    state->idct(result + 256, data + 256, state->block[4].qt); // Cb
-    state->idct(result + 320, data + 320, state->block[5].qt); // Cr
-
-    const uint8x8_t tosigned = vdup_n_u8(0x80);
-    const int16x8_t s0 = vdupq_n_s16(JPEG_FIXED( 1.40200));
-    const int16x8_t s1 = vdupq_n_s16(JPEG_FIXED(-0.71414));
-    const int16x8_t s2 = vdupq_n_s16(JPEG_FIXED(-0.34414));
-    const int16x8_t s3 = vdupq_n_s16(JPEG_FIXED( 1.77200));
-
-    for (int y = 0; y < 8; ++y)
-    {
-        uint8x8_t u_y0 = vld1_u8(result + y * 16 + 0);
-        uint8x8_t u_y1 = vld1_u8(result + y * 16 + 128);
-        uint8x8_t u_y2 = vld1_u8(result + y * 16 + 8);
-        uint8x8_t u_y3 = vld1_u8(result + y * 16 + 136);
-        uint8x8_t u_cb = vld1_u8(result + y * 8 + 256);
-        uint8x8_t u_cr = vld1_u8(result + y * 8 + 320);
-
-        int16x8_t s_y0 = vreinterpretq_s16_u16(vshll_n_u8(u_y0, 4));
-        int16x8_t s_y1 = vreinterpretq_s16_u16(vshll_n_u8(u_y1, 4));
-        int16x8_t s_y2 = vreinterpretq_s16_u16(vshll_n_u8(u_y2, 4));
-        int16x8_t s_y3 = vreinterpretq_s16_u16(vshll_n_u8(u_y3, 4));
-        int16x8_t s_cb = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cb, tosigned)), 7);
-        int16x8_t s_cr = vshll_n_s8(vreinterpret_s8_u8(vsub_u8(u_cr, tosigned)), 7);
-
-        int16x8x2_t w_cb = vzipq_s16(s_cb, s_cb);
-        int16x8x2_t w_cr = vzipq_s16(s_cr, s_cr);
-
-        INNERLOOP_YCBCR(dest + 0 * XSTEP, s_y0, w_cb.val[0], w_cr.val[0], s0, s1, s2, s3);
-        INNERLOOP_YCBCR(dest + 1 * XSTEP, s_y1, w_cb.val[1], w_cr.val[1], s0, s1, s2, s3);
-        dest += stride;
-
-        INNERLOOP_YCBCR(dest + 0 * XSTEP, s_y2, w_cb.val[0], w_cr.val[0], s0, s1, s2, s3);
-        INNERLOOP_YCBCR(dest + 1 * XSTEP, s_y3, w_cb.val[1], w_cr.val[1], s0, s1, s2, s3);
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-
-//      sse2
-// ----------------------------------------------------------------------------
-
-#ifdef FUNCTION_YCBCR_8x8
-void FUNCTION_YCBCR_8x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 3];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y
-    state->idct(result +  64, data +  64, state->block[1].qt); // Cb
-    state->idct(result + 128, data + 128, state->block[2].qt); // Cr
-
-    // color conversion
-    const __m128i s0 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.40200));
-    const __m128i s1 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.77200));
-    const __m128i s2 = JPEG_CONST_SSE2(JPEG_FIXED(-0.34414), JPEG_FIXED(-0.71414));
-    const __m128i rounding = _mm_set1_epi32(1 << (JPEG_PREC - 1));
-    const __m128i tosigned = _mm_set1_epi16(-128);
-
-    for (int y = 0; y < 4; ++y)
-    {
-        __m128i yy = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 0));
-        __m128i cb = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 64));
-        __m128i cr = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 128));
-
-        __m128i zero = _mm_setzero_si128();
-
-        __m128i cb0 = _mm_unpacklo_epi8(cb, zero);
-        __m128i cr0 = _mm_unpacklo_epi8(cr, zero);
-        __m128i cb1 = _mm_unpackhi_epi8(cb, zero);
-        __m128i cr1 = _mm_unpackhi_epi8(cr, zero);
-
-        cb0 = _mm_add_epi16(cb0, tosigned);
-        cr0 = _mm_add_epi16(cr0, tosigned);
-        cb1 = _mm_add_epi16(cb1, tosigned);
-        cr1 = _mm_add_epi16(cr1, tosigned);
-
-        INNERLOOP_YCBCR(dest, _mm_unpacklo_epi8(yy, zero), cb0, cr0, s0, s1, s2, rounding);
-        dest += stride;
-
-        INNERLOOP_YCBCR(dest, _mm_unpackhi_epi8(yy, zero), cb1, cr1, s0, s1, s2, rounding);
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_8x16
-void FUNCTION_YCBCR_8x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 4];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y0
-    state->idct(result +  64, data +  64, state->block[1].qt); // Y1
-    state->idct(result + 128, data + 128, state->block[2].qt); // Cb
-    state->idct(result + 192, data + 192, state->block[3].qt); // Cr
-
-    // color conversion
-    const __m128i s0 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.40200));
-    const __m128i s1 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.77200));
-    const __m128i s2 = JPEG_CONST_SSE2(JPEG_FIXED(-0.34414), JPEG_FIXED(-0.71414));
-    const __m128i rounding = _mm_set1_epi32(1 << (JPEG_PREC - 1));
-    const __m128i tosigned = _mm_set1_epi16(-128);
-
-    for (int y = 0; y < 4; ++y)
-    {
-        __m128i y0 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 0));
-        __m128i y1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 16));
-        __m128i cb = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 128));
-        __m128i cr = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 192));
-
-        __m128i zero = _mm_setzero_si128();
-
-        __m128i cb0 = _mm_unpacklo_epi8(cb, zero);
-        __m128i cr0 = _mm_unpacklo_epi8(cr, zero);
-        __m128i cb1 = _mm_unpackhi_epi8(cb, zero);
-        __m128i cr1 = _mm_unpackhi_epi8(cr, zero);
-
-        cb0 = _mm_add_epi16(cb0, tosigned);
-        cr0 = _mm_add_epi16(cr0, tosigned);
-        cb1 = _mm_add_epi16(cb1, tosigned);
-        cr1 = _mm_add_epi16(cr1, tosigned);
-
-        INNERLOOP_YCBCR(dest, _mm_unpacklo_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
-        dest += stride;
-
-        INNERLOOP_YCBCR(dest, _mm_unpackhi_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
-        dest += stride;
-
-        INNERLOOP_YCBCR(dest, _mm_unpacklo_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
-        dest += stride;
-
-        INNERLOOP_YCBCR(dest, _mm_unpackhi_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_16x8
-void FUNCTION_YCBCR_16x8(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 4];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y0
-    state->idct(result +  64, data +  64, state->block[1].qt); // Y1
-    state->idct(result + 128, data + 128, state->block[2].qt); // Cb
-    state->idct(result + 192, data + 192, state->block[3].qt); // Cr
-
-    // color conversion
-    const __m128i s0 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.40200));
-    const __m128i s1 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.77200));
-    const __m128i s2 = JPEG_CONST_SSE2(JPEG_FIXED(-0.34414), JPEG_FIXED(-0.71414));
-    const __m128i rounding = _mm_set1_epi32(1 << (JPEG_PREC - 1));
-    const __m128i tosigned = _mm_set1_epi16(-128);
-
-    for (int y = 0; y < 4; ++y)
-    {
-        __m128i y0 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 0));
-        __m128i y1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 64));
-        __m128i cb = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 128));
-        __m128i cr = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 192));
-
-        __m128i zero = _mm_setzero_si128();
-        __m128i cb0;
-        __m128i cb1;
-        __m128i cr0;
-        __m128i cr1;
-
-        cb0 = _mm_unpacklo_epi8(cb, cb);
-        cr0 = _mm_unpacklo_epi8(cr, cr);
-
-        cb1 = _mm_unpackhi_epi8(cb0, zero);
-        cr1 = _mm_unpackhi_epi8(cr0, zero);
-        cb0 = _mm_unpacklo_epi8(cb0, zero);
-        cr0 = _mm_unpacklo_epi8(cr0, zero);
-
-        cb0 = _mm_add_epi16(cb0, tosigned);
-        cr0 = _mm_add_epi16(cr0, tosigned);
-        cb1 = _mm_add_epi16(cb1, tosigned);
-        cr1 = _mm_add_epi16(cr1, tosigned);
-
-        INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpacklo_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
-        INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpacklo_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
-        dest += stride;
-
-        cb0 = _mm_unpackhi_epi8(cb, cb);
-        cr0 = _mm_unpackhi_epi8(cr, cr);
-
-        cb1 = _mm_unpackhi_epi8(cb0, zero);
-        cr1 = _mm_unpackhi_epi8(cr0, zero);
-        cb0 = _mm_unpacklo_epi8(cb0, zero);
-        cr0 = _mm_unpacklo_epi8(cr0, zero);
-
-        cb0 = _mm_add_epi16(cb0, tosigned);
-        cr0 = _mm_add_epi16(cr0, tosigned);
-        cb1 = _mm_add_epi16(cb1, tosigned);
-        cr1 = _mm_add_epi16(cr1, tosigned);
-
-        INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpackhi_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
-        INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpackhi_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
-
-#ifdef FUNCTION_YCBCR_16x16
-void FUNCTION_YCBCR_16x16(u8* dest, size_t stride, const s16* data, ProcessState* state, int width, int height)
-{
-    u8 result[64 * 6];
-
-    state->idct(result +   0, data +   0, state->block[0].qt); // Y0
-    state->idct(result + 128, data +  64, state->block[1].qt); // Y1
-    state->idct(result +  64, data + 128, state->block[2].qt); // Y2
-    state->idct(result + 192, data + 192, state->block[3].qt); // Y3
-    state->idct(result + 256, data + 256, state->block[4].qt); // Cb
-    state->idct(result + 320, data + 320, state->block[5].qt); // Cr
-
-    // color conversion
-    const __m128i s0 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.40200));
-    const __m128i s1 = JPEG_CONST_SSE2(JPEG_FIXED( 1.00000), JPEG_FIXED( 1.77200));
-    const __m128i s2 = JPEG_CONST_SSE2(JPEG_FIXED(-0.34414), JPEG_FIXED(-0.71414));
-    const __m128i rounding = _mm_set1_epi32(1 << (JPEG_PREC - 1));
-    const __m128i tosigned = _mm_set1_epi16(-128);
-
-    for (int y = 0; y < 4; ++y)
-    {
-        __m128i y0 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 0));
-        __m128i y1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 128));
-        __m128i y2 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 16));
-        __m128i y3 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 32 + 144));
-        __m128i cb = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 256));
-        __m128i cr = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result + y * 16 + 320));
-
-        __m128i zero = _mm_setzero_si128();
-        __m128i cb0;
-        __m128i cb1;
-        __m128i cr0;
-        __m128i cr1;
-
-        cb0 = _mm_unpacklo_epi8(cb, cb);
-        cr0 = _mm_unpacklo_epi8(cr, cr);
-
-        cb1 = _mm_unpackhi_epi8(cb0, zero);
-        cr1 = _mm_unpackhi_epi8(cr0, zero);
-        cb0 = _mm_unpacklo_epi8(cb0, zero);
-        cr0 = _mm_unpacklo_epi8(cr0, zero);
-
-        cb0 = _mm_add_epi16(cb0, tosigned);
-        cr0 = _mm_add_epi16(cr0, tosigned);
-        cb1 = _mm_add_epi16(cb1, tosigned);
-        cr1 = _mm_add_epi16(cr1, tosigned);
-
-        INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpacklo_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
-        INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpacklo_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
-        dest += stride;
-
-        INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpackhi_epi8(y0, zero), cb0, cr0, s0, s1, s2, rounding);
-        INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpackhi_epi8(y1, zero), cb1, cr1, s0, s1, s2, rounding);
-        dest += stride;
-
-        cb0 = _mm_unpackhi_epi8(cb, cb);
-        cr0 = _mm_unpackhi_epi8(cr, cr);
-
-        cb1 = _mm_unpackhi_epi8(cb0, zero);
-        cr1 = _mm_unpackhi_epi8(cr0, zero);
-        cb0 = _mm_unpacklo_epi8(cb0, zero);
-        cr0 = _mm_unpacklo_epi8(cr0, zero);
-
-        cb0 = _mm_add_epi16(cb0, tosigned);
-        cr0 = _mm_add_epi16(cr0, tosigned);
-        cb1 = _mm_add_epi16(cb1, tosigned);
-        cr1 = _mm_add_epi16(cr1, tosigned);
-
-        INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpacklo_epi8(y2, zero), cb0, cr0, s0, s1, s2, rounding);
-        INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpacklo_epi8(y3, zero), cb1, cr1, s0, s1, s2, rounding);
-        dest += stride;
-
-        INNERLOOP_YCBCR(dest + 0 * XSTEP, _mm_unpackhi_epi8(y2, zero), cb0, cr0, s0, s1, s2, rounding);
-        INNERLOOP_YCBCR(dest + 1 * XSTEP, _mm_unpackhi_epi8(y3, zero), cb1, cr1, s0, s1, s2, rounding);
-        dest += stride;
-    }
-
-    MANGO_UNREFERENCED(width);
-    MANGO_UNREFERENCED(height);
-}
-#endif
 
