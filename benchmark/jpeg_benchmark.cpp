@@ -164,11 +164,13 @@ void jpge_save(
 // print
 // ----------------------------------------------------------------------
 
-void print(const char* name, std::uint64_t load, std::uint64_t save)
+void print(const char* name, std::uint64_t load, std::uint64_t save,
+    const int width, const int height, const int channels)
 {
     printf("%s", name);
     printf("%7d.%d ms ", int(load / 1000), int(load % 1000) / 100);
     printf("%7d.%d ms ", int(save / 1000), int(save % 1000) / 100);
+    printf("%6d x %-4d x %d", width, height, channels);
     printf("\n");
 }
 
@@ -182,9 +184,9 @@ int main(int argc, const char* argv[])
     const char* filename = argc > 1 ? argv[1] : default_filename;
 
     printf("%s\n", mango::getSystemInfo().c_str());
-    printf("----------------------------------------------\n");
-    printf("                load         save             \n");
-    printf("----------------------------------------------\n");
+    printf("----------------------------------------------------\n");
+    printf("                load         save        size       \n");
+    printf("----------------------------------------------------\n");
 
     std::uint64_t time0;
     std::uint64_t time1;
@@ -201,7 +203,7 @@ int main(int argc, const char* argv[])
 
     time2 = mango::Time::us();
     if (img) { delete [] img; img = nullptr; }
-    print("libjpeg: ", time1 - time0, time2 - time1);
+    print("libjpeg: ", time1 - time0, time2 - time1, width, height, channels);
     // ------------------------------------------------------------------
     time0 = mango::Time::us();
     img = stb_load_jpeg(filename, width, height, channels);
@@ -211,7 +213,7 @@ int main(int argc, const char* argv[])
 
     time2 = mango::Time::us();
     if (img) { delete [] img; img = nullptr; }
-    print("stb:     ", time1 - time0, time2 - time1);
+    print("stb:     ", time1 - time0, time2 - time1, width, height, channels);
     // ------------------------------------------------------------------
     time0 = mango::Time::us();
     img = jpgd_load(filename, width, height, channels);
@@ -221,15 +223,15 @@ int main(int argc, const char* argv[])
 
     time2 = mango::Time::us();
     if (img) { delete [] img; img = nullptr; }
-    print("jpgd:    ", time1 - time0, time2 - time1);
+    print("jpgd:    ", time1 - time0, time2 - time1, width, height, channels);
     // ------------------------------------------------------------------
-
     time0 = mango::Time::us();
-    mango::image::Surface bitmap = mango_load_jpeg(filename);
+    img = mango_load_jpeg(filename, width, height, channels);
 
     time1 = mango::Time::us();
-    mango_save_jpeg("output-mango.jpg", bitmap);
+    mango_save_jpeg("output-mango.jpg", img, width, height, channels);
 
     time2 = mango::Time::us();
-    print("mango:   ", time1 - time0, time2 - time1);
+    if (img) { delete [] img; img = nullptr; }
+    print("mango:   ", time1 - time0, time2 - time1, width, height, channels);
 }

@@ -1896,7 +1896,7 @@ namespace mango::jpeg
         // configure header
         header.width = xsize;
         header.height = ysize;
-        header.format = components > 1 ? Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8)
+        header.format = components > 1 ? Format(24, Format::UNORM, Format::BGR, 8, 8, 8)
                                        : LuminanceFormat(8, Format::UNORM, 8, 0);
 
         MANGO_UNREFERENCED(length);

@@ -31,8 +31,11 @@ mango::ConstMemory read(const char * filename) {
 // image load & save
 // ----------------------------------------------------------------------
 
-mango::image::Surface mango_load_jpeg(
-    const char * filename,
+unsigned char * mango_load_jpeg(
+    const char* filename,
+    int & width,
+    int & height,
+    int & channels,
     const bool simd = true,
     const bool multithread = true
 ) {
@@ -40,39 +43,45 @@ mango::image::Surface mango_load_jpeg(
     decode_options.simd = simd;
     decode_options.multithread = multithread;
 
-    mango::image::Surface bitmap;
-
     mango::ConstMemory memory = read(filename);
     mango::jpeg::Parser parser(memory);
-    mango::image::ImageHeader header = parser.header;
-    bitmap.format = header.format;
-    if (decode_options.palette) {
-        decode_options.palette->size = 0;
-        if (header.palette)
-            bitmap.format = mango::image::IndexedFormat(8);
-    }
-    bitmap.width  = header.width;
-    bitmap.height = header.height;
-    bitmap.stride = header.width * bitmap.format.bytes();
-    bitmap.image  = new unsigned char[header.height * bitmap.stride];
-
+    mango::image::ImageHeader & header = parser.header;
+    const size_t stride = header.width * header.format.bytes();
+    mango::image::Surface bitmap(
+        header.width,
+        header.height,
+        header.format,
+        stride,
+        new unsigned char[header.height * stride]
+    );
     mango::image::ImageDecodeStatus status = parser.decode(bitmap, decode_options);
     MANGO_UNREFERENCED(status);
-    return bitmap;
+    width  = header.width;
+    height = header.height;
+    channels = header.format.bytes();
+    return bitmap.image;
 }
 
 void mango_save_jpeg(
     const char* filename,
-    const mango::image::Surface& bitmap,
-    const float quality = 0.7f,
+    unsigned char * data,
+    const int width,
+    const int height,
+    const int channels,
+    const int quality = 90,
     const bool simd = true,
     const bool multithread = true
 ) {
     mango::image::ImageEncodeOptions encode_options;
-    encode_options.quality = quality;
+    encode_options.quality = quality / 100.f;
     encode_options.simd = simd;
     encode_options.multithread = multithread;
     mango::filesystem::FileStream file(filename, mango::Stream::WRITE);
+
+    auto format = channels > 1 ? Format(24, Format::UNORM, Format::BGR, 8, 8, 8)
+                               : LuminanceFormat(8, Format::UNORM, 8, 0);
+    const size_t stride = width * format.bytes();
+    mango::image::Surface bitmap(width, height, format, stride, data);
     mango::image::ImageEncodeStatus status = mango::jpeg::encodeImage(file, bitmap, encode_options);
     MANGO_UNREFERENCED(status);
 }
