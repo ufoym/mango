@@ -15,13 +15,15 @@
 #include <jpeglib.h>
 #include <jerror.h>
 
-mango::image::Surface load_jpeg(const char* filename)
+unsigned char * load_jpeg(
+    const char* filename,
+    int & width,
+    int & height,
+    int & channels)
 {
     FILE* file = fopen(filename, "rb" );
     if (!file)
-    {
-        return mango::image::Surface();
-    }
+        return nullptr;
 
     struct jpeg_decompress_struct info;
     struct jpeg_error_mgr err;
@@ -34,36 +36,31 @@ mango::image::Surface load_jpeg(const char* filename)
 
     jpeg_start_decompress(&info);
 
-    int w = info.output_width;
-    int h = info.output_height;
-    int numChannels = info.num_components; // 3 = RGB, 4 = RGBA
-    unsigned long dataSize = w * h * numChannels;
+    width = info.output_width;
+    height = info.output_height;
+    channels = info.num_components;
+    unsigned long dataSize = width * height * channels;
 
     // read scanlines one at a time & put bytes in jdata[] array (assumes an RGB image)
     unsigned char *data = new unsigned char[dataSize];;
     unsigned char *rowptr[ 1 ]; // array or pointers
     for ( ; info.output_scanline < info.output_height ; )
     {
-        rowptr[ 0 ] = data + info.output_scanline * w * numChannels;
+        rowptr[ 0 ] = data + info.output_scanline * width * channels;
         jpeg_read_scanlines( &info, rowptr, 1 );
     }
-
     jpeg_finish_decompress(&info);
-
     fclose(file);
-
-    mango::image::Format format = mango::image::Format(
-        24, mango::image::Format::UNORM,
-        mango::image::Format::RGB, 8, 8, 8);
-    if (numChannels == 4)
-        format = mango::image::Format(
-            32, mango::image::Format::UNORM,
-            mango::image::Format::RGBA, 8, 8, 8, 8);
-
-    return mango::image::Surface(w, h, format, w * numChannels, data);
+    return data;
 }
 
-void save_jpeg(const char* filename, const mango::image::Surface& surface)
+void save_jpeg(
+    const char* filename,
+    unsigned char * data,
+    const int width,
+    const int height,
+    const int channels,
+    const int quality = 90)
 {
     struct jpeg_compress_struct cinfo;
     jpeg_create_compress(&cinfo);
@@ -79,28 +76,24 @@ void save_jpeg(const char* filename, const mango::image::Surface& surface)
     }
     jpeg_stdio_dest(&cinfo, outfile);
 
-    cinfo.image_width = surface.width;
-    cinfo.image_height = surface.height;
-    cinfo.input_components = surface.format.bytes();
-    //cinfo.in_color_space = surface.format.bytes() == 3 ? JCS_RGB : JCS_EXT_RGBA;
+    cinfo.image_width = width;
+    cinfo.image_height = height;
+    cinfo.input_components = channels;
     cinfo.in_color_space = JCS_RGB;
 
-    int quality = 95;
     bool progressive = false;
 
     jpeg_set_defaults(&cinfo);
     if (progressive)
-    {
         jpeg_simple_progression(&cinfo);
-    }
     jpeg_set_quality(&cinfo, quality, TRUE);
     jpeg_start_compress(&cinfo, TRUE);
 
     JSAMPROW row_pointer[1];
-
+    const int stride = width * channels;
     while (cinfo.next_scanline < cinfo.image_height)
     {
-        row_pointer[0] = surface.image + cinfo.next_scanline * surface.stride;
+        row_pointer[0] = data + cinfo.next_scanline * stride;
         int x = jpeg_write_scanlines(&cinfo, row_pointer, 1);
         (void) x;
     }
@@ -108,8 +101,6 @@ void save_jpeg(const char* filename, const mango::image::Surface& surface)
     jpeg_finish_compress(&cinfo);
     jpeg_destroy_compress(&cinfo);
     fclose(outfile);
-
-    delete[] surface.image;
 }
 
 // ----------------------------------------------------------------------
@@ -200,14 +191,17 @@ int main(int argc, const char* argv[])
 
 #ifdef TEST_LIBJPEG
 
+    int width = 0, height = 0, channels = 0;
+
     time0 = mango::Time::us();
-    mango::image::Surface s = load_jpeg(filename);
+    unsigned char * img = load_jpeg(filename, width, height, channels);
 
     time1 = mango::Time::us();
-    save_jpeg("output-libjpeg.jpg", s);
+    save_jpeg("output-libjpeg.jpg", img, width, height, channels);
 
     time2 = mango::Time::us();
     print("libjpeg: ", time1 - time0, time2 - time1);
+    delete [] img;
 
 #endif
 
