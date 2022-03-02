@@ -4,10 +4,6 @@
 */
 #include <jpeg.hpp>
 
-#define TEST_LIBJPEG
-#define TEST_STB
-#define TEST_JPEG_COMPRESSOR
-
 // ----------------------------------------------------------------------
 // libjpeg
 // ----------------------------------------------------------------------
@@ -113,27 +109,29 @@ void save_jpeg(
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-mango::image::Surface stb_load_jpeg(const char* filename)
+unsigned char * stb_load_jpeg(
+    const char* filename,
+    int & width,
+    int & height,
+    int & channels)
 {
-    int width, height, bpp;
-    unsigned char* rgb = stbi_load(filename, &width, &height, &bpp, 3);
-
-    return mango::image::Surface(
-        width, height, mango::image::Format(24, mango::image::Format::UNORM,
-        mango::image::Format::RGB, 8, 8, 8), width * 3, rgb);
+    return stbi_load(filename, &width, &height, &channels, 0);
 }
 
-void stb_save_jpeg(const char* filename, const mango::image::Surface& surface)
+void stb_save_jpeg(
+    const char* filename,
+    unsigned char * data,
+    const int width,
+    const int height,
+    const int channels,
+    const int quality = 90)
 {
-    stbi_write_jpg(filename, surface.width, surface.height, 3, surface.image, surface.width*3);
-    stbi_image_free(surface.image);
+    stbi_write_jpg(filename, width, height, channels, data, quality);
 }
 
 // ----------------------------------------------------------------------
 // jpeg-compressor
 // ----------------------------------------------------------------------
-
-#ifdef TEST_JPEG_COMPRESSOR
 
 #include "jpeg-compressor/jpgd.h"
 #include "jpeg-compressor/jpge.h"
@@ -154,8 +152,6 @@ void jpge_save(const char* filename, const mango::image::Surface& surface)
     jpge::compress_image_to_jpeg_file(filename, surface.width, surface.height, 4, surface.image);
     free(surface.image);
 }
-
-#endif
 
 // ----------------------------------------------------------------------
 // print
@@ -187,12 +183,8 @@ int main(int argc, const char* argv[])
     std::uint64_t time1;
     std::uint64_t time2;
 
-    // ------------------------------------------------------------------
-
-#ifdef TEST_LIBJPEG
-
     int width = 0, height = 0, channels = 0;
-
+    // ------------------------------------------------------------------
     time0 = mango::Time::us();
     unsigned char * img = load_jpeg(filename, width, height, channels);
 
@@ -200,29 +192,19 @@ int main(int argc, const char* argv[])
     save_jpeg("output-libjpeg.jpg", img, width, height, channels);
 
     time2 = mango::Time::us();
+    if (img) { delete [] img; img = nullptr; }
     print("libjpeg: ", time1 - time0, time2 - time1);
-    delete [] img;
-
-#endif
-
     // ------------------------------------------------------------------
-
-#ifdef TEST_STB
-
     time0 = mango::Time::us();
-    mango::image::Surface s_stb = stb_load_jpeg(filename);
+    unsigned char * img = stb_load_jpeg(filename, width, height, channels);
 
     time1 = mango::Time::us();
-    stb_save_jpeg("output-stb.jpg", s_stb);
+    stb_save_jpeg("output-stb.jpg", img, width, height, channels);
 
     time2 = mango::Time::us();
+    if (img) { delete [] img; img = nullptr; }
     print("stb:     ", time1 - time0, time2 - time1);
-
-#endif
-
     // ------------------------------------------------------------------
-
-#ifdef TEST_JPEG_COMPRESSOR
 
     time0 = mango::Time::us();
     mango::image::Surface s_jpgd = jpgd_load(filename);
@@ -232,8 +214,6 @@ int main(int argc, const char* argv[])
 
     time2 = mango::Time::us();
     print("jpgd:    ", time1 - time0, time2 - time1);
-
-#endif
 
     // ------------------------------------------------------------------
 
