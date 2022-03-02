@@ -3,7 +3,9 @@
     Copyright (C) 2012-2020 Twilight Finland 3D Oy Ltd. All rights reserved.
 */
 #include <chrono>
+#include <atomic>
 #include <mango/core/thread.hpp>
+#include <mango/core/configure.hpp>
 #include "../../external/concurrentqueue/concurrentqueue.h"
 #include "../../external/concurrentqueue/readerwriterqueue.h"
 
@@ -90,6 +92,27 @@ using std::chrono::milliseconds;
 namespace mango
 {
 
+    // ----------------------------------------------------------------------------
+    // pause()
+    // ----------------------------------------------------------------------------
+
+    static inline
+    void pause()
+    {
+#if defined(MANGO_CPU_INTEL)
+    #if defined(MANGO_COMPILER_CLANG) || defined(MANGO_COMPILER_MICROSOFT)
+        _mm_pause();
+    #else
+        __builtin_ia32_pause();
+    #endif
+#elif defined(MANGO_CPU_ARM)
+        asm volatile ("yield");
+#elif defined(MANGO_CPU_MIPS)
+        __asm__ __volatile__("pause");
+#else
+        // NOTE: Processor yield/pause is not supported :(
+#endif
+    }
     // ------------------------------------------------------------
     // ThreadPool
     // ------------------------------------------------------------
@@ -116,7 +139,7 @@ namespace mango
         //       this gives better performance overall UNTIL we have some practical
         //       use for the affinity (eg. dependent tasks using same cache)
         const bool affinity = false;//std::thread::hardware_concurrency() > 1;
-		if (affinity)
+        if (affinity)
         {
             set_current_thread_affinity(0);
         }
