@@ -136,21 +136,28 @@ void stb_save_jpeg(
 #include "jpeg-compressor/jpgd.h"
 #include "jpeg-compressor/jpge.h"
 
-mango::image::Surface jpgd_load(const char* filename)
+unsigned char * jpgd_load(
+    const char* filename,
+    int & width,
+    int & height,
+    int & channels)
 {
-    int width;
-    int height;
-    int comps;
-    unsigned char* image = jpgd::decompress_jpeg_image_from_file(filename, &width, &height, &comps, 4);
-    return mango::image::Surface(
-        width, height, mango::image::Format(32, mango::image::Format::UNORM,
-        mango::image::Format::BGRA, 8, 8, 8, 8), width * 4, image);
+    return jpgd::decompress_jpeg_image_from_file(
+        filename, &width, &height, &channels, 3);
 }
 
-void jpge_save(const char* filename, const mango::image::Surface& surface)
+void jpge_save(
+    const char* filename,
+    unsigned char * data,
+    const int width,
+    const int height,
+    const int channels,
+    const int quality = 90)
 {
-    jpge::compress_image_to_jpeg_file(filename, surface.width, surface.height, 4, surface.image);
-    free(surface.image);
+    jpge::params p;
+    p.m_quality = quality;
+    jpge::compress_image_to_jpeg_file(
+        filename, width, height, 3, data, p);
 }
 
 // ----------------------------------------------------------------------
@@ -184,9 +191,10 @@ int main(int argc, const char* argv[])
     std::uint64_t time2;
 
     int width = 0, height = 0, channels = 0;
+    unsigned char * img = nullptr;
     // ------------------------------------------------------------------
     time0 = mango::Time::us();
-    unsigned char * img = load_jpeg(filename, width, height, channels);
+    img = load_jpeg(filename, width, height, channels);
 
     time1 = mango::Time::us();
     save_jpeg("output-libjpeg.jpg", img, width, height, channels);
@@ -196,7 +204,7 @@ int main(int argc, const char* argv[])
     print("libjpeg: ", time1 - time0, time2 - time1);
     // ------------------------------------------------------------------
     time0 = mango::Time::us();
-    unsigned char * img = stb_load_jpeg(filename, width, height, channels);
+    img = stb_load_jpeg(filename, width, height, channels);
 
     time1 = mango::Time::us();
     stb_save_jpeg("output-stb.jpg", img, width, height, channels);
@@ -205,16 +213,15 @@ int main(int argc, const char* argv[])
     if (img) { delete [] img; img = nullptr; }
     print("stb:     ", time1 - time0, time2 - time1);
     // ------------------------------------------------------------------
-
     time0 = mango::Time::us();
-    mango::image::Surface s_jpgd = jpgd_load(filename);
+    img = jpgd_load(filename, width, height, channels);
 
     time1 = mango::Time::us();
-    jpge_save("output-jpge.jpg", s_jpgd);
+    stb_save_jpeg("output-jpge.jpg", img, width, height, channels);
 
     time2 = mango::Time::us();
+    if (img) { delete [] img; img = nullptr; }
     print("jpgd:    ", time1 - time0, time2 - time1);
-
     // ------------------------------------------------------------------
 
     time0 = mango::Time::us();
