@@ -25,6 +25,7 @@ int main() {
         "jpeg400jfif.jpg",
         "jpeg420exif.jpg",
         "jpeg422jfif.jpg",
+        "jpegCMYK.jpg",
     };
 
     printf("%s\n", mango::getSystemInfo().c_str());
