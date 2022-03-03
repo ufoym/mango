@@ -3,14 +3,6 @@
 #include <jpeg.hpp>
 #include <opencv2/opencv.hpp>
 
-void print(const std::string name, std::uint64_t load, std::uint64_t save, float diff) {
-    printf("%-16s", name.c_str());
-    printf("%7d.%d ms ", int(load / 1000), int(load % 1000) / 100);
-    printf("%7d.%d ms ", int(save / 1000), int(save % 1000) / 100);
-    printf("%12.1f ", diff);
-    printf("\n");
-}
-
 float get_diff(const std::string pathA, const std::string pathB) {
     cv::Mat imgA = cv::imread(pathA);
     cv::Mat imgB = cv::imread(pathB);
@@ -43,6 +35,15 @@ int main() {
         mango_save_jpeg(tmp.c_str(), bitmap);
 
         std::uint64_t time2 = mango::Time::us();
-        print(filename, time1 - time0, time2 - time1, get_diff(path, tmp));
+
+        std::uint64_t load = time1 - time0;
+        std::uint64_t save = time2 - time1;
+        float diff = get_diff(path, tmp);
+
+        printf("%-16s", filename.c_str());
+        printf("%7d.%d ms ", int(load / 1000), int(load % 1000) / 100);
+        printf("%7d.%d ms ", int(save / 1000), int(save % 1000) / 100);
+        printf("%12.1f ", diff);
+        printf("\n");
     }
 }
