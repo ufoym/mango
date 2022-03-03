@@ -226,12 +226,11 @@ int main(int argc, const char* argv[])
     print("jpgd:    ", time1 - time0, time2 - time1, width, height, channels);
     // ------------------------------------------------------------------
     time0 = mango::Time::us();
-    img = mango_load_jpeg(filename, width, height, channels);
+    mango::image::Surface bitmap = mango_load_jpeg(filename);
 
     time1 = mango::Time::us();
-    mango_save_jpeg("output-mango.jpg", img, width, height, channels);
+    mango_save_jpeg("output-mango.jpg", bitmap);
 
     time2 = mango::Time::us();
-    if (img) { delete [] img; img = nullptr; }
     print("mango:   ", time1 - time0, time2 - time1, width, height, channels);
 }
