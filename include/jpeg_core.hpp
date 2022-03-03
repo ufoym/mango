@@ -53,8 +53,6 @@ namespace mango::image
 
     struct ImageDecodeStatus : Status
     {
-        bool direct = false;
-
         // animation information
         // NOTE: we would love to simply return number of animation frames in the ImageHeader
         //       but some formats do not provide this information without decompressing frames
@@ -80,7 +78,6 @@ namespace mango::image
 
     struct ImageEncodeStatus : Status
     {
-        bool direct = false;
     };
 
     struct ImageEncodeOptions
@@ -2991,29 +2988,8 @@ namespace mango::jpeg
             sf.format = Format(32, Format::UNORM, Format::BGRA, 8, 8, 8, 8);
         }
 
-        status.direct = true;
-
-        if (target.width != xsize || target.height != ysize)
-        {
-            status.direct = false;
-        }
-
-        if (target.format != sf.format)
-        {
-            status.direct = false;
-        }
-
         // set decoding target surface
         m_surface = &target;
-
-        std::unique_ptr<Bitmap> temp;
-
-        if (!status.direct)
-        {
-            // create a temporary decoding target
-            temp = std::make_unique<Bitmap>(width, height, sf.format);
-            m_surface = temp.get();
-        }
 
         parse(scan_memory, true);
 
@@ -3026,11 +3002,6 @@ namespace mango::jpeg
         if (is_progressive || is_multiscan)
         {
             finishProgressive();
-        }
-
-        if (!status.direct)
-        {
-            target.blit(0, 0, *m_surface);
         }
 
         blockVector.resize(0);
@@ -6439,7 +6410,6 @@ namespace mango::jpeg
         {
             jpegEncoder encoder(surface, sf.sample, options);
             status = encoder.encodeImage(stream);
-            status.direct = true;
         }
         else
         {
