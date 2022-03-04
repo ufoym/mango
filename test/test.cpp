@@ -21,15 +21,15 @@ int main() {
     };
 
     printf("%s\n", mango::getSystemInfo().c_str());
-    printf("-----------------------------------------------------------\n");
-    printf("    test-case          load         save          diff     \n");
-    printf("-----------------------------------------------------------\n");
-
+    printf("------------------------------------------------------------------------------------------------------------------------------------------------------------\n");
+    printf(" test-case                 w  x   h  x c @ p                        encoding compression  iDCT color                         load         save          diff\n");
+    printf("------------------------------------------------------------------------------------------------------------------------------------------------------------\n");
     for (auto filename: filenames) {
         auto path = root + filename;
 
         std::uint64_t time0 = mango::Time::us();
-        mango::image::Surface bitmap = mango_load_jpeg(path.c_str());
+        mango::image::Surface bitmap;
+        auto status = mango_load_jpeg(path.c_str(), bitmap);
 
         std::uint64_t time1 = mango::Time::us();
         mango_save_jpeg(tmp.c_str(), bitmap);
@@ -40,10 +40,12 @@ int main() {
         std::uint64_t save = time2 - time1;
         float diff = get_diff(path, tmp);
 
-        printf("%-16s", filename.c_str());
+        printf("%-24s", filename.c_str());
+        printf("%s", status.info.c_str());
         printf("%7d.%d ms ", int(load / 1000), int(load % 1000) / 100);
         printf("%7d.%d ms ", int(save / 1000), int(save % 1000) / 100);
         printf("%12.1f ", diff);
         printf("\n");
     }
+    printf("------------------------------------------------------------------------------------------------------------------------------------------------------------\n");
 }

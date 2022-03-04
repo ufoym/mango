@@ -10,7 +10,8 @@
 #include <cstdio>
 #include <cstddef>
 #include <cstring>
-
+#include <sstream>
+#include <iomanip>
 #include <mango/math/vector.hpp>
 
 #include <mango/core/timer.hpp>
@@ -3012,29 +3013,21 @@ namespace mango::jpeg
 
     std::string Parser::getInfo() const
     {
-        std::string info = m_encoding;
+        std::stringstream info;
 
-        info += ", ";
-        info += m_compression;
+        info << std::setw(5) << xsize;
+        info << " x" << std::setw(5) << ysize;
+        info << " x " << components;
+        info << " @" << std::setw(2) << precision;
 
-        if (!m_idct_name.empty())
-        {
-            info += ", ";
-            info += m_idct_name;
-        }
+        info << std::setw(32) << m_encoding;
+        info << std::setw(12) << m_compression;
+        info << std::setw(6) << (!m_idct_name.empty() ? m_idct_name.substr(6) : " ");
+        info << std::left << " ";
+        info << std::setw(18) << (!m_ycbcr_name.empty() ? m_ycbcr_name.substr(7) : " ");
+        info << std::setw(5) << (restartInterval > 0 ? "[RST]" : " ");
 
-        if (!m_ycbcr_name.empty())
-        {
-            info += ", ";
-            info += m_ycbcr_name;
-        }
-
-        if (restartInterval > 0)
-        {
-            info += " [RST]";
-        }
-
-        return info;
+        return info.str();
     }
 
     int Parser::getTaskSize(int tasks) const

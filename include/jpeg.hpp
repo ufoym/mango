@@ -31,16 +31,15 @@ mango::ConstMemory read(const char * filename) {
 // image load & save
 // ----------------------------------------------------------------------
 
-mango::image::Surface mango_load_jpeg(
+mango::image::ImageDecodeStatus mango_load_jpeg(
     const char * filename,
+    mango::image::Surface & bitmap,
     const bool simd = true,
     const bool multithread = true
 ) {
     mango::image::ImageDecodeOptions decode_options;
     decode_options.simd = simd;
     decode_options.multithread = multithread;
-
-    mango::image::Surface bitmap;
 
     mango::ConstMemory memory = read(filename);
     mango::jpeg::Parser parser(memory);
@@ -57,8 +56,7 @@ mango::image::Surface mango_load_jpeg(
     bitmap.image  = new unsigned char[header.height * bitmap.stride];
 
     mango::image::ImageDecodeStatus status = parser.decode(bitmap, decode_options);
-    MANGO_UNREFERENCED(status);
-    return bitmap;
+    return status;
 }
 
 void mango_save_jpeg(
